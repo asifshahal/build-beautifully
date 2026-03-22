@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 const DLMM_URL = "https://dlmm-api.meteora.ag/pair/all_with_pagination?page=0&limit=100&sort_key=volume&order_by=desc";
-const DAMM_URL = "https://amm-v2.meteora.ag/pools?page=0&limit=100&sort_key=volume&order_by=desc";
+const DAMM_URL = "https://dammv2-api.meteora.ag/pools?page=0&limit=100&sort_by=tvl&order=desc";
 
 interface MeteoraPool {
   address: string;
