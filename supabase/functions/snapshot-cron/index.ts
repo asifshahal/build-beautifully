@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
 
   // Fetch and save DLMM pools
   try {
-    const pools = await fetchPools(DLMM_BASE, "dlmm");
+    const pools = await fetchDLMMPools();
     const now = new Date().toISOString();
 
     const snapshots = pools.map((p) => ({
