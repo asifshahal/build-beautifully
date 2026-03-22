@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Index from "./pages/Index.tsx";
-import NotFound from "./pages/NotFound.tsx";
+import DLMMHotPools from "./pages/DLMMHotPools";
+import DAMMHotPools from "./pages/DAMMHotPools";
+import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
 
@@ -15,8 +16,9 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/" element={<Navigate to="/dlmm-hot-pools" replace />} />
+          <Route path="/dlmm-hot-pools" element={<DLMMHotPools />} />
+          <Route path="/damm-hot-pools" element={<DAMMHotPools />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
