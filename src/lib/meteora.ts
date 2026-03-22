@@ -61,7 +61,7 @@ export async function fetchDLMMPools(): Promise<PoolData[]> {
 export async function fetchDAMMPools(): Promise<PoolData[]> {
   await loadTokenLogos();
   
-  const res = await fetch(`${DAMM_API}/pools?page=0&limit=100&sort_key=volume&order_by=desc`);
+  const res = await fetch(`${DAMM_API}/pools?page=0&limit=100&sort_by=tvl&order=desc`);
   if (!res.ok) throw new Error(`DAMM API error: ${res.status}`);
   const data = await res.json();
   
