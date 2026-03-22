@@ -4,7 +4,7 @@ import AppLayout from '@/components/AppLayout';
 import FilterBar from '@/components/FilterBar';
 import PoolTable from '@/components/PoolTable';
 import RefreshTimer from '@/components/RefreshTimer';
-import { fetchDAMMPools } from '@/lib/meteora';
+import { fetchPoolsFromBackend } from '@/lib/api';
 import { PoolData } from '@/lib/types';
 
 export default function DAMMHotPools() {
@@ -28,7 +28,7 @@ export default function DAMMHotPools() {
   const loadPools = useCallback(async () => {
     try {
       setIsLoading(true);
-      const data = await fetchDAMMPools();
+      const data = await fetchPoolsFromBackend('damm');
       setPools(data);
       setLastUpdated(Date.now());
       setError(null);

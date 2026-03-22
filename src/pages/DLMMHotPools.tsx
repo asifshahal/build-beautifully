@@ -4,7 +4,7 @@ import AppLayout from '@/components/AppLayout';
 import FilterBar from '@/components/FilterBar';
 import PoolTable from '@/components/PoolTable';
 import RefreshTimer from '@/components/RefreshTimer';
-import { fetchDLMMPools } from '@/lib/meteora';
+import { fetchPoolsFromBackend } from '@/lib/api';
 import { PoolData } from '@/lib/types';
 
 export default function DLMMHotPools() {
@@ -28,7 +28,7 @@ export default function DLMMHotPools() {
   const loadPools = useCallback(async () => {
     try {
       setIsLoading(true);
-      const data = await fetchDLMMPools();
+      const data = await fetchPoolsFromBackend('dlmm');
       setPools(data);
       setLastUpdated(Date.now());
       setError(null);
