@@ -150,10 +150,10 @@ export default function PoolTable({ pools, isLoading }: PoolTableProps) {
 
                   {/* Price 5m */}
                   <td className="px-4 py-3 font-mono-numbers whitespace-nowrap">
-                    {pool.price_change_5m !== null ? (
-                      <span className={`flex items-center gap-1 ${pool.price_change_5m >= 0 ? 'text-cit-green' : 'text-cit-red'}`}>
-                        {pool.price_change_5m >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                        {formatPercent(pool.price_change_5m)}
+                    {(pool.price_change ?? pool.price_change_5m) !== null ? (
+                      <span className={`flex items-center gap-1 ${(pool.price_change ?? pool.price_change_5m ?? 0) >= 0 ? 'text-cit-green' : 'text-cit-red'}`}>
+                        {(pool.price_change ?? pool.price_change_5m ?? 0) >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                        {formatPercent(pool.price_change ?? pool.price_change_5m)}
                       </span>
                     ) : (
                       <span className="text-muted-foreground">N/A</span>
