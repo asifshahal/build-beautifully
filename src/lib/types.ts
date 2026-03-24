@@ -10,14 +10,40 @@ export interface PoolData {
   tvl: number;
   fee_tvl_ratio: number | null;
   market_cap: number | null;
-  volume_30min: number | null;
-  fees_30min: number | null;
-  price_change_5m: number | null;
+  volume_delta: number | null;
+  fees_delta: number | null;
+  price: number;
+  price_change: number | null;
+  score: number | null;
+  flags: PoolFlags;
   holders: number | null;
   created_at: string | null;
+  computed_at?: string;
+  // legacy compat
+  volume_30min?: number | null;
+  fees_30min?: number | null;
+  price_change_5m?: number | null;
   bin_step?: number;
   base_fee?: number;
 }
 
-export type SortField = 'tvl' | 'fee_tvl_ratio' | 'market_cap' | 'volume_30min' | 'fees_30min' | 'price_change_5m' | 'holders' | 'created_at';
+export interface PoolFlags {
+  trending_up?: boolean;
+  fee_spike?: boolean;
+  volume_spike?: boolean;
+  new_pool?: boolean;
+  risky?: boolean;
+}
+
+export type Timeframe = '5m' | '15m' | '30m' | '1h' | '4h' | '24h';
+
+export type SortField = 'tvl' | 'fee_tvl_ratio' | 'market_cap' | 'volume_delta' | 'fees_delta' | 'price_change' | 'score' | 'holders' | 'created_at';
 export type SortDirection = 'asc' | 'desc';
+
+export interface FetchPoolsOptions {
+  poolType: 'dlmm' | 'damm';
+  timeframe?: Timeframe;
+  limit?: number;
+  sort?: string;
+  filter?: string;
+}
