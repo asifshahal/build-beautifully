@@ -15,9 +15,9 @@ const columns: { key: SortField | 'pool' | 'actions'; label: string; sortable: b
   { key: 'tvl', label: 'TVL', sortable: true },
   { key: 'fee_tvl_ratio', label: 'Fee/TVL 30min', sortable: true },
   { key: 'market_cap', label: 'MC', sortable: true },
-  { key: 'volume_30min', label: '30min VOL', sortable: true },
-  { key: 'fees_30min', label: '30min Fees', sortable: true },
-  { key: 'price_change_5m', label: 'Price 5m', sortable: true },
+  { key: 'volume_delta', label: '30min VOL', sortable: true },
+  { key: 'fees_delta', label: '30min Fees', sortable: true },
+  { key: 'price_change', label: 'Price 5m', sortable: true },
   { key: 'holders', label: 'Holders', sortable: true },
   { key: 'created_at', label: 'Age', sortable: true },
   { key: 'actions', label: 'Actions', sortable: false },
@@ -140,20 +140,20 @@ export default function PoolTable({ pools, isLoading }: PoolTableProps) {
 
                   {/* 30min Volume */}
                   <td className="px-4 py-3 font-mono-numbers text-foreground whitespace-nowrap">
-                    {formatCurrency(pool.volume_30min)}
+                    {formatCurrency(pool.volume_delta ?? pool.volume_30min)}
                   </td>
 
                   {/* 30min Fees */}
                   <td className="px-4 py-3 font-mono-numbers text-foreground whitespace-nowrap">
-                    {formatCurrency(pool.fees_30min)}
+                    {formatCurrency(pool.fees_delta ?? pool.fees_30min)}
                   </td>
 
                   {/* Price 5m */}
                   <td className="px-4 py-3 font-mono-numbers whitespace-nowrap">
-                    {pool.price_change_5m !== null ? (
-                      <span className={`flex items-center gap-1 ${pool.price_change_5m >= 0 ? 'text-cit-green' : 'text-cit-red'}`}>
-                        {pool.price_change_5m >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                        {formatPercent(pool.price_change_5m)}
+                    {(pool.price_change ?? pool.price_change_5m) !== null ? (
+                      <span className={`flex items-center gap-1 ${(pool.price_change ?? pool.price_change_5m ?? 0) >= 0 ? 'text-cit-green' : 'text-cit-red'}`}>
+                        {(pool.price_change ?? pool.price_change_5m ?? 0) >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                        {formatPercent(pool.price_change ?? pool.price_change_5m)}
                       </span>
                     ) : (
                       <span className="text-muted-foreground">N/A</span>

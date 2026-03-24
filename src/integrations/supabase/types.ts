@@ -41,6 +41,30 @@ export type Database = {
         }
         Relationships: []
       }
+      error_logs: {
+        Row: {
+          created_at: string
+          details: Json | null
+          id: string
+          message: string
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          details?: Json | null
+          id?: string
+          message: string
+          source: string
+        }
+        Update: {
+          created_at?: string
+          details?: Json | null
+          id?: string
+          message?: string
+          source?: string
+        }
+        Relationships: []
+      }
       pool_snapshots: {
         Row: {
           fees: number
@@ -71,6 +95,54 @@ export type Database = {
           timestamp?: string
           tvl?: number
           volume?: number
+        }
+        Relationships: []
+      }
+      pool_summary: {
+        Row: {
+          computed_at: string
+          fee_tvl_ratio: number | null
+          fees_delta: number | null
+          flags: Json | null
+          id: string
+          pool_address: string
+          pool_type: string
+          price: number
+          price_change: number | null
+          score: number | null
+          timeframe: string
+          tvl: number
+          volume_delta: number | null
+        }
+        Insert: {
+          computed_at?: string
+          fee_tvl_ratio?: number | null
+          fees_delta?: number | null
+          flags?: Json | null
+          id?: string
+          pool_address: string
+          pool_type: string
+          price?: number
+          price_change?: number | null
+          score?: number | null
+          timeframe: string
+          tvl?: number
+          volume_delta?: number | null
+        }
+        Update: {
+          computed_at?: string
+          fee_tvl_ratio?: number | null
+          fees_delta?: number | null
+          flags?: Json | null
+          id?: string
+          pool_address?: string
+          pool_type?: string
+          price?: number
+          price_change?: number | null
+          score?: number | null
+          timeframe?: string
+          tvl?: number
+          volume_delta?: number | null
         }
         Relationships: []
       }
@@ -115,6 +187,39 @@ export type Database = {
           token_b_logo?: string
           token_b_mint?: string
           token_b_symbol?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      system_status: {
+        Row: {
+          component: string
+          id: string
+          last_error: string | null
+          last_success: string | null
+          metadata: Json | null
+          pool_count: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          component: string
+          id?: string
+          last_error?: string | null
+          last_success?: string | null
+          metadata?: Json | null
+          pool_count?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          component?: string
+          id?: string
+          last_error?: string | null
+          last_success?: string | null
+          metadata?: Json | null
+          pool_count?: number | null
+          status?: string
           updated_at?: string
         }
         Relationships: []

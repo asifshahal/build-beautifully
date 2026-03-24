@@ -6,25 +6,9 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
-interface ComputedPool {
-  pool_address: string;
-  pool_type: string;
-  token_a_symbol: string;
-  token_b_symbol: string;
-  token_a_logo: string;
-  token_b_logo: string;
-  token_a_mint: string;
-  token_b_mint: string;
-  tvl: number;
-  fee_tvl_ratio: number | null;
-  market_cap: number;
-  volume_30min: number | null;
-  fees_30min: number | null;
-  price: number;
-  price_change_5m: number | null;
-  holders: number;
-  created_at: string;
-}
+const VALID_TIMEFRAMES = ["5m", "15m", "30m", "1h", "4h", "24h"];
+const VALID_SORTS = ["fee_tvl_ratio", "score", "tvl", "volume_delta", "fees_delta", "price_change"];
+const VALID_FILTERS = ["trending", "new", "risky", "fee_spike", "volume_spike", "high_fee", "stable"];
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -33,154 +17,128 @@ Deno.serve(async (req) => {
 
   const url = new URL(req.url);
   const poolType = url.searchParams.get("type") ?? "dlmm";
+  const timeframe = url.searchParams.get("timeframe") ?? "30m";
+  const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "100"), 500);
+  const sort = url.searchParams.get("sort") ?? "fee_tvl_ratio";
+  const filter = url.searchParams.get("filter") ?? null;
 
   if (poolType !== "dlmm" && poolType !== "damm") {
-    return new Response(
-      JSON.stringify({ ok: false, error: "Invalid pool type" }),
-      { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    return Response.json(
+      { ok: false, error: "Invalid pool type" },
+      { status: 400, headers: corsHeaders }
+    );
+  }
+  if (!VALID_TIMEFRAMES.includes(timeframe)) {
+    return Response.json(
+      { ok: false, error: `Invalid timeframe. Use: ${VALID_TIMEFRAMES.join(", ")}` },
+      { status: 400, headers: corsHeaders }
+    );
+  }
+  if (!VALID_SORTS.includes(sort)) {
+    return Response.json(
+      { ok: false, error: `Invalid sort. Use: ${VALID_SORTS.join(", ")}` },
+      { status: 400, headers: corsHeaders }
     );
   }
 
-  const supabase = createClient(
+  const db = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
   );
 
   try {
-    const now = new Date();
-    const fiveMinAgo = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
-    const thirtyMinAgo = new Date(now.getTime() - 30 * 60 * 1000).toISOString();
-
-    // Get latest snapshots (last 5 min)
-    const { data: latestRows, error: e1 } = await supabase
-      .from("pool_snapshots")
+    // Read from pre-computed summary table
+    let query = db
+      .from("pool_summary")
       .select("*")
       .eq("pool_type", poolType)
-      .gte("timestamp", fiveMinAgo)
-      .order("timestamp", { ascending: false });
+      .eq("timeframe", timeframe)
+      .order(sort, { ascending: false, nullsFirst: false })
+      .limit(limit);
 
-    if (e1) throw new Error(e1.message);
-    if (!latestRows || latestRows.length === 0) {
-      return new Response(
-        JSON.stringify({ ok: true, pools: [], count: 0 }),
+    const { data: summaries, error: sumErr } = await query;
+    if (sumErr) throw new Error(sumErr.message);
+
+    if (!summaries || summaries.length === 0) {
+      return Response.json(
+        { ok: true, pools: [], count: 0, timeframe },
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Deduplicate: keep most recent per pool
-    const latestMap = new Map<string, any>();
-    for (const row of latestRows) {
-      if (!latestMap.has(row.pool_address)) {
-        latestMap.set(row.pool_address, row);
-      }
-    }
-
-    const addresses = Array.from(latestMap.keys());
-
-    // Get ~30min-ago snapshots, ~5min-ago prices, and metadata in parallel
-    const [oldResult, prevPriceResult, metaResult] = await Promise.all([
-      supabase
-        .from("pool_snapshots")
-        .select("*")
-        .eq("pool_type", poolType)
-        .in("pool_address", addresses)
-        .lte("timestamp", thirtyMinAgo)
-        .order("timestamp", { ascending: false }),
-      supabase
-        .from("pool_snapshots")
-        .select("pool_address, price, timestamp")
-        .eq("pool_type", poolType)
-        .in("pool_address", addresses)
-        .lte("timestamp", fiveMinAgo)
-        .order("timestamp", { ascending: false }),
-      supabase
-        .from("pools_meta")
-        .select("*")
-        .eq("pool_type", poolType)
-        .in("pool_address", addresses),
-    ]);
-
-    // Build lookup maps
-    const oldMap = new Map<string, any>();
-    for (const row of oldResult.data ?? []) {
-      if (!oldMap.has(row.pool_address)) oldMap.set(row.pool_address, row);
-    }
-
-    const prevPriceMap = new Map<string, number>();
-    for (const row of prevPriceResult.data ?? []) {
-      if (!prevPriceMap.has(row.pool_address))
-        prevPriceMap.set(row.pool_address, row.price);
-    }
+    // Get metadata for these pools
+    const addresses = summaries.map((s: any) => s.pool_address);
+    const { data: metas } = await db
+      .from("pools_meta")
+      .select("*")
+      .in("pool_address", addresses);
 
     const metaMap = new Map<string, any>();
-    for (const m of metaResult.data ?? []) {
-      metaMap.set(m.pool_address, m);
-    }
+    for (const m of metas ?? []) metaMap.set(m.pool_address, m);
 
-    // Compute 30min metrics
-    const results: ComputedPool[] = [];
-    for (const [addr, nowSnap] of latestMap.entries()) {
-      const meta = metaMap.get(addr);
-      if (!meta) continue;
+    // Merge summary + metadata
+    let pools = summaries.map((s: any) => {
+      const meta = metaMap.get(s.pool_address);
+      return {
+        pool_address: s.pool_address,
+        pool_type: s.pool_type,
+        token_a_symbol: meta?.token_a_symbol ?? "",
+        token_b_symbol: meta?.token_b_symbol ?? "",
+        token_a_logo: meta?.token_a_logo ?? "",
+        token_b_logo: meta?.token_b_logo ?? "",
+        token_a_mint: meta?.token_a_mint ?? "",
+        token_b_mint: meta?.token_b_mint ?? "",
+        tvl: s.tvl,
+        fee_tvl_ratio: s.fee_tvl_ratio,
+        volume_delta: s.volume_delta,
+        fees_delta: s.fees_delta,
+        price: s.price,
+        price_change: s.price_change,
+        score: s.score,
+        flags: s.flags ?? {},
+        market_cap: meta?.market_cap ?? 0,
+        holders: meta?.holders ?? 0,
+        created_at: meta?.created_at ?? null,
+        computed_at: s.computed_at,
+      };
+    });
 
-      const oldSnap = oldMap.get(addr) ?? null;
-      const prevPrice = prevPriceMap.get(addr) ?? null;
-
-      let fees_30min: number | null = null;
-      let volume_30min: number | null = null;
-      let fee_tvl_ratio: number | null = null;
-      let price_change_5m: number | null = null;
-
-      if (oldSnap) {
-        const f = nowSnap.fees - oldSnap.fees;
-        const v = nowSnap.volume - oldSnap.volume;
-        fees_30min = f >= 0 ? f : null;
-        volume_30min = v >= 0 ? v : null;
-        if (fees_30min !== null && nowSnap.tvl > 0) {
-          fee_tvl_ratio = (fees_30min / nowSnap.tvl) * 100;
+    // Apply filter
+    if (filter && VALID_FILTERS.includes(filter)) {
+      pools = pools.filter((p: any) => {
+        switch (filter) {
+          case "trending":
+            return p.flags?.trending_up === true;
+          case "new":
+            return p.flags?.new_pool === true;
+          case "risky":
+            return p.flags?.risky === true;
+          case "fee_spike":
+            return p.flags?.fee_spike === true;
+          case "volume_spike":
+            return p.flags?.volume_spike === true;
+          case "high_fee":
+            return (p.fee_tvl_ratio ?? 0) > 1.0;
+          case "stable":
+            return (
+              (p.fee_tvl_ratio ?? 0) > 0.1 &&
+              p.tvl > 10000 &&
+              (p.holders ?? 0) > 100 &&
+              p.flags?.risky !== true
+            );
+          default:
+            return true;
         }
-      }
-
-      if (prevPrice !== null && prevPrice > 0 && nowSnap.price > 0) {
-        price_change_5m =
-          ((nowSnap.price - prevPrice) / prevPrice) * 100;
-      }
-
-      results.push({
-        pool_address: nowSnap.pool_address,
-        pool_type: meta.pool_type,
-        token_a_symbol: meta.token_a_symbol,
-        token_b_symbol: meta.token_b_symbol,
-        token_a_logo: meta.token_a_logo,
-        token_b_logo: meta.token_b_logo,
-        token_a_mint: meta.token_a_mint,
-        token_b_mint: meta.token_b_mint,
-        tvl: nowSnap.tvl,
-        fee_tvl_ratio,
-        market_cap: meta.market_cap,
-        volume_30min,
-        fees_30min,
-        price: nowSnap.price,
-        price_change_5m,
-        holders: meta.holders,
-        created_at: meta.created_at,
       });
     }
 
-    // Sort by fee_tvl_ratio descending (nulls last)
-    results.sort((a, b) => {
-      if (a.fee_tvl_ratio === null) return 1;
-      if (b.fee_tvl_ratio === null) return -1;
-      return b.fee_tvl_ratio - a.fee_tvl_ratio;
-    });
-
-    return new Response(
-      JSON.stringify({ ok: true, pools: results, count: results.length }),
+    return Response.json(
+      { ok: true, pools, count: pools.length, timeframe },
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err: any) {
-    return new Response(
-      JSON.stringify({ ok: false, error: err.message, pools: [] }),
+    return Response.json(
+      { ok: false, error: err.message, pools: [] },
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
