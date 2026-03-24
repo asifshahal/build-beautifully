@@ -140,7 +140,7 @@ export default function PoolTable({ pools, isLoading }: PoolTableProps) {
 
                   {/* 30min Volume */}
                   <td className="px-4 py-3 font-mono-numbers text-foreground whitespace-nowrap">
-                    {formatCurrency(pool.volume_30min)}
+                    {formatCurrency(pool.volume_delta ?? pool.volume_30min)}
                   </td>
 
                   {/* 30min Fees */}
