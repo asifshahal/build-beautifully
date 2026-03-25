@@ -34,7 +34,12 @@ export async function fetchDLMMPools(): Promise<PoolData[]> {
   if (!res.ok) throw new Error(`DLMM API error: ${res.status}`);
   const json = await res.json();
 
-  const pools = json.data ?? [];
+  const SOL_MINT = 'So11111111111111111111111111111111111111112';
+  const pools = (json.data ?? []).filter((p: any) => {
+    const mintA = p.token_x?.address ?? '';
+    const mintB = p.token_y?.address ?? '';
+    return mintA === SOL_MINT || mintB === SOL_MINT;
+  });
 
   return pools.map((p: any) => {
     const tokenX = p.token_x ?? {};

@@ -83,39 +83,46 @@ Deno.serve(async (req) => {
       );
     }
 
+    const SOL_MINT = "So11111111111111111111111111111111111111112";
     const metaMap = new Map<string, any>();
     for (const m of metaResult.data ?? []) metaMap.set(m.pool_address, m);
 
     // Merge + apply fallbacks — every field guaranteed safe
-    let pools = summaries.map((s: any) => {
-      const meta = metaMap.get(s.pool_address);
-      const mc = safeNum(meta?.market_cap) || safeNum(s.tvl);
-      const holders = safeNum(meta?.holders);
-      const createdAt = meta?.created_at || null;
+    let pools = summaries
+      .map((s: any) => {
+        const meta = metaMap.get(s.pool_address);
+        const mc = safeNum(meta?.market_cap) || safeNum(s.tvl);
+        const holders = safeNum(meta?.holders);
+        const createdAt = meta?.created_at || null;
 
-      return {
-        pool_address: s.pool_address,
-        pool_type: s.pool_type,
-        token_a_symbol: meta?.token_a_symbol ?? "???",
-        token_b_symbol: meta?.token_b_symbol ?? "???",
-        token_a_logo: meta?.token_a_logo ?? "",
-        token_b_logo: meta?.token_b_logo ?? "",
-        token_a_mint: meta?.token_a_mint ?? "",
-        token_b_mint: meta?.token_b_mint ?? "",
-        tvl: safeNum(s.tvl),
-        fee_tvl_ratio: safeNum(s.fee_tvl_ratio, null),
-        volume_delta: safeNum(s.volume_delta, null),
-        fees_delta: safeNum(s.fees_delta, null),
-        price: safeNum(s.price),
-        price_change: safeNum(s.price_change, null),
-        score: safeNum(s.score, null),
-        flags: s.flags ?? {},
-        market_cap: mc,
-        holders: holders,
-        created_at: createdAt,
-        computed_at: s.computed_at,
-      };
-    });
+        return {
+          pool_address: s.pool_address,
+          pool_type: s.pool_type,
+          token_a_symbol: meta?.token_a_symbol ?? "???",
+          token_b_symbol: meta?.token_b_symbol ?? "???",
+          token_a_logo: meta?.token_a_logo ?? "",
+          token_b_logo: meta?.token_b_logo ?? "",
+          token_a_mint: meta?.token_a_mint ?? "",
+          token_b_mint: meta?.token_b_mint ?? "",
+          tvl: safeNum(s.tvl),
+          fee_tvl_ratio: safeNum(s.fee_tvl_ratio, null),
+          volume_delta: safeNum(s.volume_delta, null),
+          fees_delta: safeNum(s.fees_delta, null),
+          price: safeNum(s.price),
+          price_change: safeNum(s.price_change, null),
+          score: safeNum(s.score, null),
+          flags: s.flags ?? {},
+          market_cap: mc,
+          holders: holders,
+          created_at: createdAt,
+          computed_at: s.computed_at,
+        };
+      })
+      // For DLMM, only return SOL pairs
+      .filter((p: any) => {
+        if (poolType !== "dlmm") return true;
+        return p.token_a_mint === SOL_MINT || p.token_b_mint === SOL_MINT;
+      });
 
     // Apply filter
     if (filter && VALID_FILTERS.includes(filter)) {

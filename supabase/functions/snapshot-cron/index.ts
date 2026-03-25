@@ -148,6 +148,16 @@ async function batchFetchDexScreener(
   return map;
 }
 
+// ── SOL pair filter ────────────────────────────────────────────
+
+const SOL_MINT = "So11111111111111111111111111111111111111112";
+
+function filterSOLPairs(pools: RawPool[]): RawPool[] {
+  return pools.filter(
+    (p) => p.token_a_mint === SOL_MINT || p.token_b_mint === SOL_MINT
+  );
+}
+
 // ── Extract unique mints ───────────────────────────────────────
 
 function extractUniqueMints(pools: RawPool[]): string[] {
@@ -290,12 +300,14 @@ Deno.serve(async (req) => {
     fetchDAMMPools(),
   ]);
 
-  const dlmmPools =
-    dlmmResult.status === "fulfilled" ? dlmmResult.value : [];
+  // Filter to SOL pairs only for DLMM, keep all for DAMM
+  const dlmmPools = filterSOLPairs(
+    dlmmResult.status === "fulfilled" ? dlmmResult.value : []
+  );
   const dammPools =
     dammResult.status === "fulfilled" ? dammResult.value : [];
 
-  // Extract all unique mints and batch-fetch DexScreener once
+  // Extract unique mints only from filtered pools, then batch-fetch
   const allMints = extractUniqueMints([...dlmmPools, ...dammPools]);
   const dexMap = await batchFetchDexScreener(allMints);
 
