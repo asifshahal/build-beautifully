@@ -48,20 +48,27 @@ interface RawPool {
 function normalizeDLMM(raw: any): RawPool {
   const tokenX = raw.token_x ?? {};
   const tokenY = raw.token_y ?? {};
-  const createdAt = typeof raw.created_at === 'number' ? new Date(raw.created_at * 1000).toISOString() : raw.created_at;
+  const createdAt =
+    typeof raw.created_at === "number"
+      ? new Date(raw.created_at * 1000).toISOString()
+      : raw.created_at;
 
   return {
-    address: raw.address ?? '',
-    token_a_symbol: tokenX.symbol ?? raw.name?.split('-')[0]?.trim() ?? '',
-    token_b_symbol: tokenY.symbol ?? raw.name?.split('-')[1]?.trim() ?? '',
-    token_a_mint: tokenX.address ?? '',
-    token_b_mint: tokenY.address ?? '',
+    address: raw.address ?? "",
+    token_a_symbol: tokenX.symbol ?? raw.name?.split("-")[0]?.trim() ?? "",
+    token_b_symbol: tokenY.symbol ?? raw.name?.split("-")[1]?.trim() ?? "",
+    token_a_mint: tokenX.address ?? "",
+    token_b_mint: tokenY.address ?? "",
     tvl: parseFloat(raw.tvl ?? 0),
-    volume: parseFloat(raw.volume?.['30m'] ?? raw.volume?.['24h'] ?? 0),
-    fees: parseFloat(raw.fees?.['30m'] ?? raw.fees?.['24h'] ?? 0),
+    volume: parseFloat(raw.volume?.["30m"] ?? raw.volume?.["24h"] ?? 0),
+    fees: parseFloat(raw.fees?.["30m"] ?? raw.fees?.["24h"] ?? 0),
     price: parseFloat(raw.current_price ?? 0),
-    market_cap: parseFloat((tokenX.market_cap ?? 0) + (tokenY.market_cap ?? 0)),
-    holders: parseInt(String(Math.max(tokenX.holders ?? 0, tokenY.holders ?? 0))),
+    market_cap: parseFloat(
+      (tokenX.market_cap ?? 0) + (tokenY.market_cap ?? 0)
+    ),
+    holders: parseInt(
+      String(Math.max(tokenX.holders ?? 0, tokenY.holders ?? 0))
+    ),
     created_at: createdAt ?? new Date().toISOString(),
   };
 }
@@ -86,28 +93,79 @@ function normalizeDAMM(raw: any): RawPool {
   };
 }
 
-// ── Fetch raw pools ────────────────────────────────────────────
+// ── Batch DexScreener fetch ────────────────────────────────────
 
-async function fetchDLMMPools(): Promise<RawPool[]> {
-  const res = await fetchWithRetry(DLMM_URL);
-  const data = await res.json();
-  const pools = data.data ?? [];
-  return (Array.isArray(pools) ? pools : []).map(normalizeDLMM);
+interface DexEnrichment {
+  fdv: number;
+  marketCap: number;
+  priceUsd: number;
+  imageUrl: string;
+  pairCreatedAt: string | null;
 }
 
-async function fetchDAMMPools(): Promise<RawPool[]> {
-  const res = await fetchWithRetry(DAMM_URL);
-  const data = await res.json();
-  const pools = data.data ?? data.pools ?? data ?? [];
-  return (Array.isArray(pools) ? pools : []).map(normalizeDAMM);
+async function batchFetchDexScreener(
+  mints: string[]
+): Promise<Map<string, DexEnrichment>> {
+  const map = new Map<string, DexEnrichment>();
+  if (mints.length === 0) return map;
+
+  // DexScreener supports up to 30 addresses per call
+  const chunks: string[][] = [];
+  for (let i = 0; i < mints.length; i += 30) {
+    chunks.push(mints.slice(i, i + 30));
+  }
+
+  await Promise.all(
+    chunks.map(async (chunk) => {
+      try {
+        const url = `https://api.dexscreener.com/latest/dex/tokens/${chunk.join(",")}`;
+        const res = await fetchWithRetry(url);
+        const data = await res.json();
+        const pairs = data.pairs ?? [];
+        for (const pair of pairs) {
+          const base = pair.baseToken?.address;
+          const quote = pair.quoteToken?.address;
+          for (const addr of [base, quote]) {
+            if (addr && !map.has(addr)) {
+              map.set(addr, {
+                fdv: parseFloat(pair.fdv ?? 0),
+                marketCap: parseFloat(pair.marketCap ?? 0),
+                priceUsd: parseFloat(pair.priceUsd ?? 0),
+                imageUrl: pair.info?.imageUrl ?? "",
+                pairCreatedAt: pair.pairCreatedAt
+                  ? new Date(pair.pairCreatedAt).toISOString()
+                  : null,
+              });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("DexScreener batch failed for chunk:", err);
+      }
+    })
+  );
+
+  return map;
 }
 
-// ── Save snapshots + metadata ──────────────────────────────────
+// ── Extract unique mints ───────────────────────────────────────
+
+function extractUniqueMints(pools: RawPool[]): string[] {
+  const set = new Set<string>();
+  for (const p of pools) {
+    if (p.token_a_mint) set.add(p.token_a_mint);
+    if (p.token_b_mint) set.add(p.token_b_mint);
+  }
+  return Array.from(set);
+}
+
+// ── Save enriched data ─────────────────────────────────────────
 
 async function savePoolData(
   db: ReturnType<typeof createClient>,
   pools: RawPool[],
   poolType: "dlmm" | "damm",
+  dexMap: Map<string, DexEnrichment>,
   now: string
 ) {
   const snapshots = pools.map((p) => ({
@@ -123,20 +181,34 @@ async function savePoolData(
   const { error: snapErr } = await db.from("pool_snapshots").insert(snapshots);
   if (snapErr) throw new Error(`Snapshot insert: ${snapErr.message}`);
 
-  const metas = pools.map((p) => ({
-    pool_address: p.address,
-    pool_type: poolType,
-    token_a_symbol: p.token_a_symbol,
-    token_b_symbol: p.token_b_symbol,
-    token_a_mint: p.token_a_mint,
-    token_b_mint: p.token_b_mint,
-    token_a_logo: "",
-    token_b_logo: "",
-    market_cap: p.market_cap,
-    holders: p.holders,
-    created_at: p.created_at,
-    updated_at: now,
-  }));
+  const metas = pools.map((p) => {
+    const dexA = dexMap.get(p.token_a_mint);
+    const dexB = dexMap.get(p.token_b_mint);
+    // Use whichever token has better data (non-SOL token usually)
+    const dex = dexA?.fdv ? dexA : dexB?.fdv ? dexB : dexA ?? dexB;
+
+    const marketCap = dex?.fdv || dex?.marketCap || p.market_cap || p.tvl || 0;
+    const holders = p.holders || 0;
+    const logoA = dexA?.imageUrl || "";
+    const logoB = dexB?.imageUrl || "";
+    const createdAt =
+      dex?.pairCreatedAt || p.created_at || new Date().toISOString();
+
+    return {
+      pool_address: p.address,
+      pool_type: poolType,
+      token_a_symbol: p.token_a_symbol,
+      token_b_symbol: p.token_b_symbol,
+      token_a_mint: p.token_a_mint,
+      token_b_mint: p.token_b_mint,
+      token_a_logo: logoA,
+      token_b_logo: logoB,
+      market_cap: marketCap,
+      holders: holders,
+      created_at: createdAt,
+      updated_at: now,
+    };
+  });
 
   const { error: metaErr } = await db
     .from("pools_meta")
@@ -171,7 +243,9 @@ async function logError(
   message: string,
   details?: Record<string, unknown>
 ) {
-  await db.from("error_logs").insert({ source, message, details: details ?? {} });
+  await db
+    .from("error_logs")
+    .insert({ source, message, details: details ?? {} });
 }
 
 async function updateSystemStatus(
@@ -210,50 +284,73 @@ Deno.serve(async (req) => {
   let totalPools = 0;
   let hasFailure = false;
 
-  // DLMM — isolated, failure won't break DAMM
-  try {
-    const pools = await fetchDLMMPools();
-    const count = await savePoolData(db, pools, "dlmm", runAt);
-    totalPools += count;
-    results.dlmm = { status: "success", pools_saved: count };
-    await logCron(db, runAt, "dlmm", "success", count);
-  } catch (err: any) {
+  // Fetch both pool types in parallel
+  const [dlmmResult, dammResult] = await Promise.allSettled([
+    fetchDLMMPools(),
+    fetchDAMMPools(),
+  ]);
+
+  const dlmmPools =
+    dlmmResult.status === "fulfilled" ? dlmmResult.value : [];
+  const dammPools =
+    dammResult.status === "fulfilled" ? dammResult.value : [];
+
+  // Extract all unique mints and batch-fetch DexScreener once
+  const allMints = extractUniqueMints([...dlmmPools, ...dammPools]);
+  const dexMap = await batchFetchDexScreener(allMints);
+
+  // Save DLMM
+  if (dlmmResult.status === "fulfilled") {
+    try {
+      const count = await savePoolData(db, dlmmPools, "dlmm", dexMap, runAt);
+      totalPools += count;
+      results.dlmm = { status: "success", pools_saved: count };
+      await logCron(db, runAt, "dlmm", "success", count);
+    } catch (err: any) {
+      hasFailure = true;
+      results.dlmm = { status: "failed", error: err.message };
+      await logCron(db, runAt, "dlmm", "failed", 0, err.message);
+      await logError(db, "snapshot-cron", `DLMM save failed: ${err.message}`);
+    }
+  } else {
     hasFailure = true;
-    results.dlmm = { status: "failed", error: err.message };
-    await logCron(db, runAt, "dlmm", "failed", 0, err.message);
-    await logError(db, "snapshot-cron", `DLMM fetch failed: ${err.message}`);
+    const msg = (dlmmResult as PromiseRejectedResult).reason?.message ?? "unknown";
+    results.dlmm = { status: "failed", error: msg };
+    await logCron(db, runAt, "dlmm", "failed", 0, msg);
+    await logError(db, "snapshot-cron", `DLMM fetch failed: ${msg}`);
   }
 
-  // DAMM — isolated
-  try {
-    const pools = await fetchDAMMPools();
-    const count = await savePoolData(db, pools, "damm", runAt);
-    totalPools += count;
-    results.damm = { status: "success", pools_saved: count };
-    await logCron(db, runAt, "damm", "success", count);
-  } catch (err: any) {
+  // Save DAMM
+  if (dammResult.status === "fulfilled") {
+    try {
+      const count = await savePoolData(db, dammPools, "damm", dexMap, runAt);
+      totalPools += count;
+      results.damm = { status: "success", pools_saved: count };
+      await logCron(db, runAt, "damm", "success", count);
+    } catch (err: any) {
+      hasFailure = true;
+      results.damm = { status: "failed", error: err.message };
+      await logCron(db, runAt, "damm", "failed", 0, err.message);
+      await logError(db, "snapshot-cron", `DAMM save failed: ${err.message}`);
+    }
+  } else {
     hasFailure = true;
-    results.damm = { status: "failed", error: err.message };
-    await logCron(db, runAt, "damm", "failed", 0, err.message);
-    await logError(db, "snapshot-cron", `DAMM fetch failed: ${err.message}`);
+    const msg = (dammResult as PromiseRejectedResult).reason?.message ?? "unknown";
+    results.damm = { status: "failed", error: msg };
+    await logCron(db, runAt, "damm", "failed", 0, msg);
+    await logError(db, "snapshot-cron", `DAMM fetch failed: ${msg}`);
   }
 
-  // Cleanup: keep 24h of snapshots
-  try {
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    await db.from("pool_snapshots").delete().lt("timestamp", cutoff);
-    results.cleanup = "success";
-  } catch {
-    results.cleanup = "failed";
-  }
+  // Cleanup old data in parallel
+  const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const cutoff7d = new Date(
+    Date.now() - 7 * 24 * 60 * 60 * 1000
+  ).toISOString();
+  await Promise.allSettled([
+    db.from("pool_snapshots").delete().lt("timestamp", cutoff24h),
+    db.from("error_logs").delete().lt("created_at", cutoff7d),
+  ]);
 
-  // Cleanup old error logs (>7 days)
-  try {
-    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    await db.from("error_logs").delete().lt("created_at", cutoff);
-  } catch { /* non-critical */ }
-
-  // Update system status
   await updateSystemStatus(
     db,
     hasFailure ? "degraded" : "ok",
@@ -262,7 +359,23 @@ Deno.serve(async (req) => {
   );
 
   return new Response(
-    JSON.stringify({ ok: true, run_at: runAt, results }),
+    JSON.stringify({ ok: true, run_at: runAt, results, dex_mints: allMints.length }),
     { headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 });
+
+// ── Pool fetchers ──────────────────────────────────────────────
+
+async function fetchDLMMPools(): Promise<RawPool[]> {
+  const res = await fetchWithRetry(DLMM_URL);
+  const data = await res.json();
+  const pools = data.data ?? [];
+  return (Array.isArray(pools) ? pools : []).map(normalizeDLMM);
+}
+
+async function fetchDAMMPools(): Promise<RawPool[]> {
+  const res = await fetchWithRetry(DAMM_URL);
+  const data = await res.json();
+  const pools = data.data ?? data.pools ?? data ?? [];
+  return (Array.isArray(pools) ? pools : []).map(normalizeDAMM);
+}

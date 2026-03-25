@@ -1,7 +1,7 @@
 import { PoolData, FetchPoolsOptions } from './types';
 
 /**
- * Fetch pools from the get-pools edge function (reads pre-computed summary tables).
+ * Fetch pools from get-pools edge function (reads pre-computed summary tables).
  * Falls back to direct Meteora API when backend has no data.
  */
 export async function fetchPoolsFromBackend(
@@ -41,15 +41,29 @@ export async function fetchPoolsFromBackend(
     const json = await res.json();
 
     if (json.ok && json.pools?.length > 0) {
-      // Normalize field names for backward compat
+      // Normalize: ensure every field has a safe value
       return json.pools.map((p: any) => ({
-        ...p,
-        volume_30min: p.volume_delta ?? p.volume_30min ?? null,
-        fees_30min: p.fees_delta ?? p.fees_30min ?? null,
-        price_change_5m: p.price_change ?? p.price_change_5m ?? null,
+        pool_address: p.pool_address ?? '',
+        pool_type: p.pool_type ?? poolType,
+        token_a_symbol: p.token_a_symbol ?? '???',
+        token_b_symbol: p.token_b_symbol ?? '???',
+        token_a_logo: p.token_a_logo ?? '',
+        token_b_logo: p.token_b_logo ?? '',
+        token_a_mint: p.token_a_mint ?? '',
+        token_b_mint: p.token_b_mint ?? '',
+        tvl: Number(p.tvl) || 0,
+        fee_tvl_ratio: p.fee_tvl_ratio != null ? Number(p.fee_tvl_ratio) : null,
+        market_cap: Number(p.market_cap) || 0,
+        volume_delta: p.volume_delta != null ? Number(p.volume_delta) : null,
+        fees_delta: p.fees_delta != null ? Number(p.fees_delta) : null,
+        price: Number(p.price) || 0,
+        price_change: p.price_change != null ? Number(p.price_change) : null,
+        score: p.score != null ? Number(p.score) : null,
         flags: p.flags ?? {},
-        score: p.score ?? null,
-      }));
+        holders: Number(p.holders) || 0,
+        created_at: p.created_at ?? null,
+        computed_at: p.computed_at ?? undefined,
+      } satisfies PoolData));
     }
 
     throw new Error('No backend data');

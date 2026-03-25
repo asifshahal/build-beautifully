@@ -9,22 +9,16 @@ export interface PoolData {
   token_b_mint: string;
   tvl: number;
   fee_tvl_ratio: number | null;
-  market_cap: number | null;
+  market_cap: number;
   volume_delta: number | null;
   fees_delta: number | null;
   price: number;
   price_change: number | null;
   score: number | null;
   flags: PoolFlags;
-  holders: number | null;
+  holders: number;
   created_at: string | null;
   computed_at?: string;
-  // legacy compat
-  volume_30min?: number | null;
-  fees_30min?: number | null;
-  price_change_5m?: number | null;
-  bin_step?: number;
-  base_fee?: number;
 }
 
 export interface PoolFlags {
