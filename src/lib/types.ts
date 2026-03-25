@@ -19,6 +19,11 @@ export interface PoolData {
   holders: number;
   created_at: string | null;
   computed_at?: string;
+  // Raw numeric fields for sorting — never undefined/NaN
+  mc_sol: number;
+  age_ms: number;
+  volume_30min: number;
+  fees_30min: number;
 }
 
 export interface PoolFlags {
@@ -31,7 +36,7 @@ export interface PoolFlags {
 
 export type Timeframe = '5m' | '15m' | '30m' | '1h' | '4h' | '24h';
 
-export type SortField = 'tvl' | 'fee_tvl_ratio' | 'market_cap' | 'volume_delta' | 'fees_delta' | 'price_change' | 'score' | 'holders' | 'created_at';
+export type SortField = 'tvl' | 'fee_tvl_ratio' | 'mc_sol' | 'volume_delta' | 'fees_delta' | 'price_change' | 'score' | 'holders' | 'age_ms';
 export type SortDirection = 'asc' | 'desc';
 
 export interface FetchPoolsOptions {

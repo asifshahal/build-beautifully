@@ -1,6 +1,5 @@
 import { PoolData } from './types';
 
-const DLMM_API = 'https://dlmm.datapi.meteora.ag';
 const DAMM_API = 'https://dammv2-api.meteora.ag';
 const JUPITER_TOKEN_LIST = 'https://token.jup.ag/all';
 
@@ -27,57 +26,10 @@ function getTokenLogo(mint: string): string {
   return tokenLogoCache[mint] || '';
 }
 
-export async function fetchDLMMPools(): Promise<PoolData[]> {
-  await loadTokenLogos();
-
-  const res = await fetch(`${DLMM_API}/pools?page=1&page_size=100&sort_by=fee_tvl_ratio_30m:desc`);
-  if (!res.ok) throw new Error(`DLMM API error: ${res.status}`);
-  const json = await res.json();
-
-  const SOL_MINT = 'So11111111111111111111111111111111111111112';
-  const pools = (json.data ?? []).filter((p: any) => {
-    const mintA = p.token_x?.address ?? '';
-    const mintB = p.token_y?.address ?? '';
-    return mintA === SOL_MINT || mintB === SOL_MINT;
-  });
-
-  return pools.map((p: any) => {
-    const tokenX = p.token_x ?? {};
-    const tokenY = p.token_y ?? {};
-    const feeTvlRatio = p.fee_tvl_ratio?.['30m'] ?? null;
-    const volume30m = p.volume?.['30m'] ?? null;
-    const fees30m = p.fees?.['30m'] ?? null;
-    const createdAt = typeof p.created_at === 'number' ? new Date(p.created_at * 1000).toISOString() : p.created_at ?? null;
-
-    return {
-      pool_address: p.address ?? '',
-      pool_type: 'dlmm' as const,
-      token_a_symbol: tokenX.symbol ?? 'Unknown',
-      token_b_symbol: tokenY.symbol ?? 'Unknown',
-      token_a_mint: tokenX.address ?? '',
-      token_b_mint: tokenY.address ?? '',
-      token_a_logo: getTokenLogo(tokenX.address ?? ''),
-      token_b_logo: getTokenLogo(tokenY.address ?? ''),
-      tvl: Number(p.tvl) || 0,
-      fee_tvl_ratio: feeTvlRatio !== undefined ? Number(feeTvlRatio) : null,
-      market_cap: Number(tokenX.market_cap || 0) + Number(tokenY.market_cap || 0),
-      volume_delta: null,
-      fees_delta: null,
-      price: Number(p.current_price) || 0,
-      price_change: null,
-      score: null,
-      flags: {},
-      holders: Math.max(Number(tokenX.holders || 0), Number(tokenY.holders || 0)),
-      created_at: createdAt,
-      volume_30min: volume30m !== null ? Number(volume30m) : null,
-      fees_30min: fees30m !== null ? Number(fees30m) : null,
-      price_change_5m: null,
-      bin_step: p.pool_config?.bin_step ?? undefined,
-      base_fee: p.pool_config?.base_fee_pct ?? undefined,
-    };
-  });
-}
-
+/**
+ * DAMM pools — direct Meteora API.
+ * DLMM is now handled by dlmmPipeline.ts instead.
+ */
 export async function fetchDAMMPools(): Promise<PoolData[]> {
   await loadTokenLogos();
   
@@ -91,6 +43,19 @@ export async function fetchDAMMPools(): Promise<PoolData[]> {
     const createdTs = p.created_at_slot_timestamp
       ? new Date(p.created_at_slot_timestamp * 1000).toISOString()
       : p.created_at || null;
+
+    const tvl = Number(p.tvl) || 0;
+    const volume30min = (Number(p.volume24h) || Number(p.trading_volume) || 0) / 48;
+    const fees30min = (Number(p.fee24h) || Number(p.trading_fee) || 0) / 48;
+    const feeTvlRatio = tvl > 0 ? (fees30min / tvl) * 100 : null;
+
+    let ageMs = 0;
+    if (createdTs) {
+      const ts = new Date(createdTs).getTime();
+      ageMs = ts > 0 ? Date.now() - ts : 0;
+      if (ageMs < 0) ageMs = 0;
+    }
+
     return {
       pool_address: p.pool_address || p.address || '',
       pool_type: 'damm' as const,
@@ -100,14 +65,21 @@ export async function fetchDAMMPools(): Promise<PoolData[]> {
       token_b_mint: p.token_b_mint || '',
       token_a_logo: getTokenLogo(p.token_a_mint || ''),
       token_b_logo: getTokenLogo(p.token_b_mint || ''),
-      tvl: Number(p.tvl) || 0,
-      fee_tvl_ratio: (Number(p.tvl) || 0) > 0 ? ((Number(p.fee24h) || Number(p.trading_fee) || 0) / Number(p.tvl)) * 100 / 48 : null,
-      market_cap: null,
-      volume_30min: (Number(p.volume24h) || Number(p.trading_volume) || 0) / 48,
-      fees_30min: (Number(p.fee24h) || Number(p.trading_fee) || 0) / 48,
-      price_change_5m: null,
-      holders: null,
+      tvl,
+      fee_tvl_ratio: feeTvlRatio,
+      market_cap: 0,
+      mc_sol: 0,
+      volume_delta: volume30min || null,
+      fees_delta: fees30min || null,
+      volume_30min: volume30min,
+      fees_30min: fees30min,
+      price: 0,
+      price_change: null,
+      score: null,
+      flags: {},
+      holders: 0,
       created_at: createdTs,
-    };
+      age_ms: ageMs,
+    } satisfies PoolData;
   });
 }

@@ -10,32 +10,31 @@ interface PoolTableProps {
   isLoading: boolean;
 }
 
-const columns: { key: SortField | 'pool' | 'actions'; label: string; sortable: boolean }[] = [
-  { key: 'pool', label: 'Pool', sortable: false },
-  { key: 'tvl', label: 'TVL', sortable: true },
-  { key: 'fee_tvl_ratio', label: 'Fee/TVL 30min', sortable: true },
-  { key: 'market_cap', label: 'MC', sortable: true },
-  { key: 'volume_delta', label: '30min VOL', sortable: true },
-  { key: 'fees_delta', label: '30min Fees', sortable: true },
-  { key: 'price_change', label: 'Price 5m', sortable: true },
-  { key: 'holders', label: 'Holders', sortable: true },
-  { key: 'created_at', label: 'Age', sortable: true },
-  { key: 'actions', label: 'Actions', sortable: false },
+/**
+ * Column definitions.
+ * `sortKey` maps to a raw numeric field on PoolData, never a formatted string.
+ */
+const columns: { key: string; sortKey: SortField | null; label: string }[] = [
+  { key: 'pool',          sortKey: null,            label: 'Pool' },
+  { key: 'tvl',           sortKey: 'tvl',           label: 'TVL' },
+  { key: 'fee_tvl_ratio', sortKey: 'fee_tvl_ratio', label: 'Fee/TVL 30min' },
+  { key: 'market_cap',    sortKey: 'mc_sol',        label: 'MC' },
+  { key: 'volume_delta',  sortKey: 'volume_delta',  label: '30min VOL' },
+  { key: 'fees_delta',    sortKey: 'fees_delta',    label: '30min Fees' },
+  { key: 'price_change',  sortKey: 'price_change',  label: 'Price 5m' },
+  { key: 'holders',       sortKey: 'holders',       label: 'Holders' },
+  { key: 'age',           sortKey: 'age_ms',        label: 'Age' },
+  { key: 'actions',       sortKey: null,            label: 'Actions' },
 ];
 
-// Sort using raw numeric values only — never formatted strings
+/**
+ * Sort using raw numeric values only — never formatted strings.
+ * Every field is guaranteed to be a number (0 if missing).
+ */
 function sortPools(pools: PoolData[], field: SortField, dir: SortDirection): PoolData[] {
   return [...pools].sort((a, b) => {
-    let aVal: number;
-    let bVal: number;
-
-    if (field === 'created_at') {
-      aVal = a.created_at ? new Date(a.created_at).getTime() : 0;
-      bVal = b.created_at ? new Date(b.created_at).getTime() : 0;
-    } else {
-      aVal = Number(a[field]) || 0;
-      bVal = Number(b[field]) || 0;
-    }
+    const aVal = Number(a[field]) || 0;
+    const bVal = Number(b[field]) || 0;
 
     // Nullish values always sort last
     if (aVal === 0 && bVal !== 0) return 1;
@@ -66,19 +65,18 @@ export default function PoolTable({ pools, isLoading }: PoolTableProps) {
     [pools, sortField, sortDir]
   );
 
-  const handleSort = (field: string) => {
-    if (field === 'pool' || field === 'actions') return;
-    const f = field as SortField;
-    if (sortField === f) {
+  const handleSort = (sortKey: SortField | null) => {
+    if (!sortKey) return;
+    if (sortField === sortKey) {
       setSortDir(sortDir === 'desc' ? 'asc' : 'desc');
     } else {
-      setSortField(f);
+      setSortField(sortKey);
       setSortDir('desc');
     }
   };
 
-  const SortIcon = ({ field }: { field: string }) => {
-    if (field === 'pool' || field === 'actions') return null;
+  const SortIcon = ({ field }: { field: SortField | null }) => {
+    if (!field) return null;
     if (sortField !== field) return <ArrowUpDown size={12} className="text-muted-foreground opacity-40" />;
     return sortDir === 'desc' ? <ArrowDown size={12} className="text-primary" /> : <ArrowUp size={12} className="text-primary" />;
   };
@@ -92,14 +90,14 @@ export default function PoolTable({ pools, isLoading }: PoolTableProps) {
               {columns.map((col) => (
                 <th
                   key={col.key}
-                  onClick={() => col.sortable && handleSort(col.key)}
+                  onClick={() => handleSort(col.sortKey)}
                   className={`px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider whitespace-nowrap ${
-                    col.sortable ? 'cursor-pointer hover:text-foreground select-none transition-colors' : ''
+                    col.sortKey ? 'cursor-pointer hover:text-foreground select-none transition-colors' : ''
                   }`}
                 >
                   <div className="flex items-center gap-1">
                     {col.label}
-                    {col.sortable && <SortIcon field={col.key} />}
+                    {col.sortKey && <SortIcon field={col.sortKey} />}
                   </div>
                 </th>
               ))}
@@ -166,19 +164,19 @@ export default function PoolTable({ pools, isLoading }: PoolTableProps) {
 
                   {/* 30min Volume */}
                   <td className="px-4 py-3 font-mono-numbers text-foreground whitespace-nowrap">
-                    {formatCurrency(pool.volume_delta)}
+                    {formatCurrency(pool.volume_30min || pool.volume_delta)}
                   </td>
 
                   {/* 30min Fees */}
                   <td className="px-4 py-3 font-mono-numbers text-foreground whitespace-nowrap">
-                    {formatCurrency(pool.fees_delta)}
+                    {formatCurrency(pool.fees_30min || pool.fees_delta)}
                   </td>
 
                   {/* Price 5m */}
                   <td className="px-4 py-3 font-mono-numbers whitespace-nowrap">
-                    {pool.price_change !== null ? (
-                      <span className={`flex items-center gap-1 ${(pool.price_change ?? 0) >= 0 ? 'text-cit-green' : 'text-cit-red'}`}>
-                        {(pool.price_change ?? 0) >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                    {pool.price_change !== null && pool.price_change !== undefined ? (
+                      <span className={`flex items-center gap-1 ${pool.price_change >= 0 ? 'text-cit-green' : 'text-cit-red'}`}>
+                        {pool.price_change >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
                         {formatPercent(pool.price_change)}
                       </span>
                     ) : (
