@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, ExternalLink } from 'lucide-react';
 import { PoolData, SortField, SortDirection } from '@/lib/types';
 import { formatCurrency, formatFeeTvl, formatPercent, formatNumber, formatAge, shortenAddress } from '@/lib/formatters';
-import { getLogo } from '@/lib/tokenLogos';
+import { getLogo, getDefaultLogo } from '@/lib/tokenLogos';
 import LoadingSkeleton from './LoadingSkeleton';
 
 interface PoolTableProps {
@@ -23,40 +23,48 @@ const columns: { key: SortField | 'pool' | 'actions'; label: string; sortable: b
   { key: 'actions', label: 'Actions', sortable: false },
 ];
 
-const TokenImage = ({ mint, symbol, className }: { mint: string; symbol: string; className: string }) => {
-  const [src, setSrc] = useState<string>('/token.png');
-  
-  useEffect(() => {
-    let isMounted = true;
-    getLogo(mint).then((url) => {
-      if (isMounted) setSrc(url);
-    });
-    return () => { isMounted = false; };
-  }, [mint]);
-  
-  return <img src={src} alt={symbol} className={className} onError={(e) => { e.currentTarget.src = '/token.png'; }} />;
+// Sort using raw numeric values only — never formatted strings
+function sortPools(pools: PoolData[], field: SortField, dir: SortDirection): PoolData[] {
+  return [...pools].sort((a, b) => {
+    let aVal: number;
+    let bVal: number;
+
+    if (field === 'created_at') {
+      aVal = a.created_at ? new Date(a.created_at).getTime() : 0;
+      bVal = b.created_at ? new Date(b.created_at).getTime() : 0;
+    } else {
+      aVal = Number(a[field]) || 0;
+      bVal = Number(b[field]) || 0;
+    }
+
+    // Nullish values always sort last
+    if (aVal === 0 && bVal !== 0) return 1;
+    if (bVal === 0 && aVal !== 0) return -1;
+
+    return dir === 'desc' ? bVal - aVal : aVal - bVal;
+  });
+}
+
+const TokenImg = ({ mint, logo, symbol }: { mint: string; logo: string; symbol: string }) => {
+  const src = getLogo(mint, logo || undefined);
+  return (
+    <img
+      src={src}
+      alt={symbol}
+      className="w-5 h-5 rounded-full object-cover bg-background"
+      onError={(e) => { e.currentTarget.src = getDefaultLogo(); }}
+    />
+  );
 };
 
 export default function PoolTable({ pools, isLoading }: PoolTableProps) {
   const [sortField, setSortField] = useState<SortField>('fee_tvl_ratio');
   const [sortDir, setSortDir] = useState<SortDirection>('desc');
 
-  const sorted = useMemo(() => {
-    return [...pools].sort((a, b) => {
-      const aVal = a[sortField];
-      const bVal = b[sortField];
-      if (aVal === null || aVal === undefined) return 1;
-      if (bVal === null || bVal === undefined) return -1;
-      if (sortField === 'created_at') {
-        const aTime = new Date(aVal as string).getTime();
-        const bTime = new Date(bVal as string).getTime();
-        return sortDir === 'desc' ? bTime - aTime : aTime - bTime;
-      }
-      return sortDir === 'desc'
-        ? (bVal as number) - (aVal as number)
-        : (aVal as number) - (bVal as number);
-    });
-  }, [pools, sortField, sortDir]);
+  const sorted = useMemo(
+    () => sortPools(pools, sortField, sortDir),
+    [pools, sortField, sortDir]
+  );
 
   const handleSort = (field: string) => {
     if (field === 'pool' || field === 'actions') return;
@@ -123,8 +131,12 @@ export default function PoolTable({ pools, isLoading }: PoolTableProps) {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="flex -space-x-1.5">
-                        <TokenImage mint={pool.token_a_mint} symbol={pool.token_a_symbol} className="w-5 h-5 rounded-full object-cover z-10 bg-background" />
-                        <TokenImage mint={pool.token_b_mint} symbol={pool.token_b_symbol} className="w-5 h-5 rounded-full object-cover z-0 bg-background" />
+                        <div className="z-10">
+                          <TokenImg mint={pool.token_a_mint} logo={pool.token_a_logo} symbol={pool.token_a_symbol} />
+                        </div>
+                        <div className="z-0">
+                          <TokenImg mint={pool.token_b_mint} logo={pool.token_b_logo} symbol={pool.token_b_symbol} />
+                        </div>
                       </div>
                       <div>
                         <span className="text-foreground font-medium text-sm">
@@ -154,20 +166,20 @@ export default function PoolTable({ pools, isLoading }: PoolTableProps) {
 
                   {/* 30min Volume */}
                   <td className="px-4 py-3 font-mono-numbers text-foreground whitespace-nowrap">
-                    {formatCurrency(pool.volume_delta ?? pool.volume_30min)}
+                    {formatCurrency(pool.volume_delta)}
                   </td>
 
                   {/* 30min Fees */}
                   <td className="px-4 py-3 font-mono-numbers text-foreground whitespace-nowrap">
-                    {formatCurrency(pool.fees_delta ?? pool.fees_30min)}
+                    {formatCurrency(pool.fees_delta)}
                   </td>
 
                   {/* Price 5m */}
                   <td className="px-4 py-3 font-mono-numbers whitespace-nowrap">
-                    {(pool.price_change ?? pool.price_change_5m) !== null ? (
-                      <span className={`flex items-center gap-1 ${(pool.price_change ?? pool.price_change_5m ?? 0) >= 0 ? 'text-cit-green' : 'text-cit-red'}`}>
-                        {(pool.price_change ?? pool.price_change_5m ?? 0) >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-                        {formatPercent(pool.price_change ?? pool.price_change_5m)}
+                    {pool.price_change !== null ? (
+                      <span className={`flex items-center gap-1 ${(pool.price_change ?? 0) >= 0 ? 'text-cit-green' : 'text-cit-red'}`}>
+                        {(pool.price_change ?? 0) >= 0 ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+                        {formatPercent(pool.price_change)}
                       </span>
                     ) : (
                       <span className="text-muted-foreground">N/A</span>

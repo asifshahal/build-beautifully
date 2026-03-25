@@ -7,8 +7,19 @@ const corsHeaders = {
 };
 
 const VALID_TIMEFRAMES = ["5m", "15m", "30m", "1h", "4h", "24h"];
-const VALID_SORTS = ["fee_tvl_ratio", "score", "tvl", "volume_delta", "fees_delta", "price_change"];
-const VALID_FILTERS = ["trending", "new", "risky", "fee_spike", "volume_spike", "high_fee", "stable"];
+const VALID_SORTS = [
+  "fee_tvl_ratio", "score", "tvl", "volume_delta",
+  "fees_delta", "price_change", "market_cap", "holders", "created_at",
+];
+const VALID_FILTERS = [
+  "trending", "new", "risky", "fee_spike", "volume_spike", "high_fee", "stable",
+];
+
+// Safe number: never returns null/undefined/NaN
+function safeNum(v: any, fallback = 0): number {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -47,58 +58,61 @@ Deno.serve(async (req) => {
   );
 
   try {
-    // Read from pre-computed summary table
-    let query = db
-      .from("pool_summary")
-      .select("*")
-      .eq("pool_type", poolType)
-      .eq("timeframe", timeframe)
-      .order(sort, { ascending: false, nullsFirst: false })
-      .limit(limit);
+    // Fetch summary + meta in parallel
+    const [sumResult, metaResult] = await Promise.all([
+      db
+        .from("pool_summary")
+        .select("*")
+        .eq("pool_type", poolType)
+        .eq("timeframe", timeframe)
+        .order(sort, { ascending: false, nullsFirst: false })
+        .limit(limit),
+      db
+        .from("pools_meta")
+        .select("*")
+        .eq("pool_type", poolType),
+    ]);
 
-    const { data: summaries, error: sumErr } = await query;
-    if (sumErr) throw new Error(sumErr.message);
+    if (sumResult.error) throw new Error(sumResult.error.message);
 
-    if (!summaries || summaries.length === 0) {
+    const summaries = sumResult.data ?? [];
+    if (summaries.length === 0) {
       return Response.json(
         { ok: true, pools: [], count: 0, timeframe },
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Get metadata for these pools
-    const addresses = summaries.map((s: any) => s.pool_address);
-    const { data: metas } = await db
-      .from("pools_meta")
-      .select("*")
-      .in("pool_address", addresses);
-
     const metaMap = new Map<string, any>();
-    for (const m of metas ?? []) metaMap.set(m.pool_address, m);
+    for (const m of metaResult.data ?? []) metaMap.set(m.pool_address, m);
 
-    // Merge summary + metadata
+    // Merge + apply fallbacks — every field guaranteed safe
     let pools = summaries.map((s: any) => {
       const meta = metaMap.get(s.pool_address);
+      const mc = safeNum(meta?.market_cap) || safeNum(s.tvl);
+      const holders = safeNum(meta?.holders);
+      const createdAt = meta?.created_at || null;
+
       return {
         pool_address: s.pool_address,
         pool_type: s.pool_type,
-        token_a_symbol: meta?.token_a_symbol ?? "",
-        token_b_symbol: meta?.token_b_symbol ?? "",
+        token_a_symbol: meta?.token_a_symbol ?? "???",
+        token_b_symbol: meta?.token_b_symbol ?? "???",
         token_a_logo: meta?.token_a_logo ?? "",
         token_b_logo: meta?.token_b_logo ?? "",
         token_a_mint: meta?.token_a_mint ?? "",
         token_b_mint: meta?.token_b_mint ?? "",
-        tvl: s.tvl,
-        fee_tvl_ratio: s.fee_tvl_ratio,
-        volume_delta: s.volume_delta,
-        fees_delta: s.fees_delta,
-        price: s.price,
-        price_change: s.price_change,
-        score: s.score,
+        tvl: safeNum(s.tvl),
+        fee_tvl_ratio: safeNum(s.fee_tvl_ratio, null),
+        volume_delta: safeNum(s.volume_delta, null),
+        fees_delta: safeNum(s.fees_delta, null),
+        price: safeNum(s.price),
+        price_change: safeNum(s.price_change, null),
+        score: safeNum(s.score, null),
         flags: s.flags ?? {},
-        market_cap: meta?.market_cap ?? 0,
-        holders: meta?.holders ?? 0,
-        created_at: meta?.created_at ?? null,
+        market_cap: mc,
+        holders: holders,
+        created_at: createdAt,
         computed_at: s.computed_at,
       };
     });
@@ -107,27 +121,16 @@ Deno.serve(async (req) => {
     if (filter && VALID_FILTERS.includes(filter)) {
       pools = pools.filter((p: any) => {
         switch (filter) {
-          case "trending":
-            return p.flags?.trending_up === true;
-          case "new":
-            return p.flags?.new_pool === true;
-          case "risky":
-            return p.flags?.risky === true;
-          case "fee_spike":
-            return p.flags?.fee_spike === true;
-          case "volume_spike":
-            return p.flags?.volume_spike === true;
-          case "high_fee":
-            return (p.fee_tvl_ratio ?? 0) > 1.0;
+          case "trending": return p.flags?.trending_up === true;
+          case "new": return p.flags?.new_pool === true;
+          case "risky": return p.flags?.risky === true;
+          case "fee_spike": return p.flags?.fee_spike === true;
+          case "volume_spike": return p.flags?.volume_spike === true;
+          case "high_fee": return (p.fee_tvl_ratio ?? 0) > 1.0;
           case "stable":
-            return (
-              (p.fee_tvl_ratio ?? 0) > 0.1 &&
-              p.tvl > 10000 &&
-              (p.holders ?? 0) > 100 &&
-              p.flags?.risky !== true
-            );
-          default:
-            return true;
+            return (p.fee_tvl_ratio ?? 0) > 0.1 && p.tvl > 10000 &&
+              p.holders > 100 && p.flags?.risky !== true;
+          default: return true;
         }
       });
     }
