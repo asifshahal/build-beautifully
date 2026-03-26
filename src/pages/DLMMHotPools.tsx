@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AppLayout from '@/components/AppLayout';
 import FilterBar from '@/components/FilterBar';
@@ -7,6 +7,8 @@ import RefreshTimer from '@/components/RefreshTimer';
 import { fetchPoolsFromBackend } from '@/lib/api';
 import { PoolData } from '@/lib/types';
 
+const REFRESH_INTERVAL = 30_000;
+
 export default function DLMMHotPools() {
   const [pools, setPools] = useState<PoolData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -14,41 +16,42 @@ export default function DLMMHotPools() {
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [, setTick] = useState(0);
+  const mountedRef = useRef(true);
 
   const searchQuery = searchParams.get('search') || '';
 
-  const setSearchQuery = (q: string) => {
-    if (q) {
-      setSearchParams({ search: q });
-    } else {
-      setSearchParams({});
-    }
-  };
+  const setSearchQuery = useCallback((q: string) => {
+    setSearchParams(q ? { search: q } : {});
+  }, [setSearchParams]);
 
   const loadPools = useCallback(async () => {
     try {
       setIsLoading(true);
       const data = await fetchPoolsFromBackend('dlmm');
+      if (!mountedRef.current) return;
       setPools(data);
       setLastUpdated(Date.now());
       setError(null);
     } catch (e) {
+      if (!mountedRef.current) return;
       console.error('Failed to fetch DLMM pools:', e);
-      if (pools.length === 0) {
-        setError('Failed to load pool data. Retrying...');
-      }
+      if (pools.length === 0) setError('Failed to load pool data. Retrying...');
     } finally {
-      setIsLoading(false);
+      if (mountedRef.current) setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    mountedRef.current = true;
     loadPools();
-    const interval = setInterval(loadPools, 30_000);
-    return () => clearInterval(interval);
+    const interval = setInterval(loadPools, REFRESH_INTERVAL);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(interval);
+    };
   }, [loadPools]);
 
-  // Update timer display
+  // Timer tick
   useEffect(() => {
     const interval = setInterval(() => setTick(t => t + 1), 1000);
     return () => clearInterval(interval);
@@ -61,11 +64,12 @@ export default function DLMMHotPools() {
       (p) =>
         p.token_a_symbol.toLowerCase().includes(q) ||
         p.token_b_symbol.toLowerCase().includes(q) ||
-        p.pool_address.toLowerCase().includes(q)
+        p.pool_address.toLowerCase().includes(q) ||
+        p.token_mint.toLowerCase().includes(q)
     );
   }, [pools, searchQuery]);
 
-  const isFresh = lastUpdated ? Date.now() - lastUpdated < 30_000 : false;
+  const isFresh = lastUpdated ? Date.now() - lastUpdated < REFRESH_INTERVAL : false;
 
   return (
     <AppLayout title="DLMM Hot Pools" subtitle="Sorted by Fee/TVL ratio · 30-minute rolling window">
@@ -77,11 +81,7 @@ export default function DLMMHotPools() {
 
       <div className="flex items-center justify-between mb-4">
         <div className="flex-1">
-          <FilterBar
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            poolCount={filtered.length}
-          />
+          <FilterBar searchQuery={searchQuery} onSearchChange={setSearchQuery} poolCount={filtered.length} />
         </div>
         <div className="ml-4">
           <RefreshTimer lastUpdated={lastUpdated} isFresh={isFresh} />

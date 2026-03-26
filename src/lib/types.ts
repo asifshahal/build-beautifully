@@ -7,13 +7,18 @@ export interface PoolData {
   token_b_logo: string;
   token_a_mint: string;
   token_b_mint: string;
+  /** The non-SOL/USDC token mint — used for external links */
+  token_mint: string;
   tvl: number;
   fee_tvl_ratio: number | null;
   market_cap: number;
+  volume_24h: number;
+  fees_24h: number;
   volume_delta: number | null;
   fees_delta: number | null;
   price: number;
-  price_change: number | null;
+  price_change_1h: number | null;
+  price_change_24h: number | null;
   score: number | null;
   flags: PoolFlags;
   holders: number;
@@ -36,7 +41,21 @@ export interface PoolFlags {
 
 export type Timeframe = '5m' | '15m' | '30m' | '1h' | '4h' | '24h';
 
-export type SortField = 'tvl' | 'fee_tvl_ratio' | 'mc_sol' | 'volume_delta' | 'fees_delta' | 'price_change' | 'score' | 'holders' | 'age_ms';
+export type SortField =
+  | 'tvl'
+  | 'fee_tvl_ratio'
+  | 'mc_sol'
+  | 'volume_24h'
+  | 'fees_24h'
+  | 'volume_delta'
+  | 'fees_delta'
+  | 'price_change_1h'
+  | 'price_change_24h'
+  | 'price'
+  | 'score'
+  | 'holders'
+  | 'age_ms';
+
 export type SortDirection = 'asc' | 'desc';
 
 export interface FetchPoolsOptions {

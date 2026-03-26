@@ -1,5 +1,7 @@
 import { PoolData } from './types';
 
+const SOL_MINT = 'So11111111111111111111111111111111111111112';
+const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 const DAMM_API = 'https://dammv2-api.meteora.ag';
 const JUPITER_TOKEN_LIST = 'https://token.jup.ag/all';
 
@@ -12,9 +14,7 @@ async function loadTokenLogos() {
     const res = await fetch(JUPITER_TOKEN_LIST);
     const tokens = await res.json();
     for (const t of tokens) {
-      if (t.address && t.logoURI) {
-        tokenLogoCache[t.address] = t.logoURI;
-      }
+      if (t.address && t.logoURI) tokenLogoCache[t.address] = t.logoURI;
     }
     tokenCacheLoaded = true;
   } catch (e) {
@@ -26,19 +26,19 @@ function getTokenLogo(mint: string): string {
   return tokenLogoCache[mint] || '';
 }
 
-/**
- * DAMM pools — direct Meteora API.
- * DLMM is now handled by dlmmPipeline.ts instead.
- */
+function getTokenMint(mintA: string, mintB: string): string {
+  if (mintA === SOL_MINT || mintA === USDC_MINT) return mintB;
+  return mintA;
+}
+
 export async function fetchDAMMPools(): Promise<PoolData[]> {
   await loadTokenLogos();
-  
+
   const res = await fetch(`${DAMM_API}/pools?page=0&limit=100&sort_by=tvl&order=desc`);
   if (!res.ok) throw new Error(`DAMM API error: ${res.status}`);
   const data = await res.json();
-  
   const pools = data.data ?? data.pools ?? data ?? [];
-  
+
   return pools.map((p: any) => {
     const createdTs = p.created_at_slot_timestamp
       ? new Date(p.created_at_slot_timestamp * 1000).toISOString()
@@ -56,15 +56,19 @@ export async function fetchDAMMPools(): Promise<PoolData[]> {
       if (ageMs < 0) ageMs = 0;
     }
 
+    const mintA = p.token_a_mint || '';
+    const mintB = p.token_b_mint || '';
+
     return {
       pool_address: p.pool_address || p.address || '',
       pool_type: 'damm' as const,
       token_a_symbol: p.token_a_symbol || 'Unknown',
       token_b_symbol: p.token_b_symbol || 'Unknown',
-      token_a_mint: p.token_a_mint || '',
-      token_b_mint: p.token_b_mint || '',
-      token_a_logo: getTokenLogo(p.token_a_mint || ''),
-      token_b_logo: getTokenLogo(p.token_b_mint || ''),
+      token_a_mint: mintA,
+      token_b_mint: mintB,
+      token_mint: getTokenMint(mintA, mintB),
+      token_a_logo: getTokenLogo(mintA),
+      token_b_logo: getTokenLogo(mintB),
       tvl,
       fee_tvl_ratio: feeTvlRatio,
       market_cap: 0,
@@ -73,8 +77,11 @@ export async function fetchDAMMPools(): Promise<PoolData[]> {
       fees_delta: fees30min || null,
       volume_30min: volume30min,
       fees_30min: fees30min,
+      volume_24h: Number(p.volume24h) || 0,
+      fees_24h: Number(p.fee24h) || 0,
       price: 0,
-      price_change: null,
+      price_change_1h: null,
+      price_change_24h: null,
       score: null,
       flags: {},
       holders: 0,
