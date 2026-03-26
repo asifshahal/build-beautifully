@@ -51,7 +51,6 @@ export type SortField =
   | 'fees_delta'
   | 'price_change_1h'
   | 'price_change_24h'
-  | 'price'
   | 'score'
   | 'holders'
   | 'age_ms';

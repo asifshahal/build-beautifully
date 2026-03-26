@@ -1,6 +1,12 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Flame, BarChart3, Send, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
+
+interface SidebarProps {
+  isOpen: boolean;
+  setIsOpen: (val: boolean) => void;
+}
 
 const navItems = [
   { label: 'DLMM Hot Pools', icon: Flame, path: '/dlmm-hot-pools', external: false },
@@ -12,33 +18,41 @@ const externalLinks = [
   { label: 'X (Twitter)', icon: ExternalLink, url: 'https://x.com/citchartanalyzer' },
 ];
 
-export default function Sidebar() {
-  const [collapsed, setCollapsed] = useState(false);
+export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
+  const isMobile = useIsMobile();
   const location = useLocation();
+
+  useEffect(() => {
+    if (isMobile) setIsOpen(false);
+  }, [location.pathname, isMobile, setIsOpen]);
+
+  const sidebarWidthClass = isMobile
+    ? (isOpen ? 'w-[220px] translate-x-0' : 'w-[220px] -translate-x-full')
+    : (isOpen ? 'w-[220px] translate-x-0' : 'w-12 translate-x-0');
 
   return (
     <aside
-      className={`fixed top-0 left-0 h-full bg-secondary border-r border-border z-40 transition-all duration-300 flex flex-col ${
-        collapsed ? 'w-12' : 'w-[220px]'
-      }`}
+      className={`fixed top-0 left-0 h-full bg-secondary border-r border-border z-40 transition-all duration-300 flex flex-col ${sidebarWidthClass}`}
     >
       {/* Logo */}
-      <div className="h-[60px] flex items-center px-3 border-b border-border">
-        {!collapsed && (
-          <div className="flex items-center gap-2">
-            <img src="/logo.jpeg" alt="CitLab's Logo" className="h-7 w-auto object-contain" />
-            <span className="text-foreground font-bold text-lg tracking-tight">
+      <div className="h-[60px] flex items-center px-3 border-b border-border overflow-hidden">
+        {isOpen && (
+          <div className="flex items-center gap-2 min-w-0">
+            <img src="/logo.jpeg" alt="CitLab's Logo" className="h-7 w-auto object-contain flex-shrink-0" />
+            <span className="text-foreground font-bold text-lg tracking-tight truncate">
               CitLab's
             </span>
           </div>
         )}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="ml-auto p-1 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-        </button>
+        {!isMobile && (
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="ml-auto p-1 rounded hover:bg-accent transition-colors text-muted-foreground hover:text-foreground shrink-0"
+            aria-label={isOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          >
+            {isOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+          </button>
+        )}
       </div>
 
       {/* Nav */}
@@ -56,7 +70,7 @@ export default function Sidebar() {
               }`}
             >
               <item.icon size={18} className={isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'} />
-              {!collapsed && <span>{item.label}</span>}
+              {isOpen && <span>{item.label}</span>}
             </Link>
           );
         })}
@@ -73,7 +87,7 @@ export default function Sidebar() {
             className="flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-all duration-150 border-l-[3px] border-transparent"
           >
             <item.icon size={18} />
-            {!collapsed && (
+            {isOpen && (
               <>
                 <span>{item.label}</span>
                 <ExternalLink size={12} className="ml-auto opacity-50" />
@@ -84,7 +98,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      {!collapsed && (
+      {isOpen && (
         <div className="px-4 py-3 border-t border-border">
           <p className="text-[10px] text-muted-foreground leading-tight">
             citchartanalyzer.app

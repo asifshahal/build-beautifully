@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, ExternalLink } from 'lucide-react';
 import { PoolData, SortField, SortDirection } from '@/lib/types';
-import { formatCurrency, formatPercent, formatAge, shortenAddress } from '@/lib/formatters';
+import { formatCurrency, formatPercent, formatAge, shortenAddress, formatMarketCapSol } from '@/lib/formatters';
 import { getLogo, getDefaultLogo, markLogoFailed } from '@/lib/tokenLogos';
 import { useIsMobile } from '@/hooks/use-mobile';
 import LoadingSkeleton from './LoadingSkeleton';
@@ -15,7 +15,7 @@ interface PoolTableProps {
 
 const columns: { key: string; sortKey: SortField | null; label: string }[] = [
   { key: 'pool',           sortKey: null,               label: 'Token' },
-  { key: 'price',          sortKey: 'price',            label: 'Price' },
+  { key: 'marketcap',      sortKey: 'mc_sol',           label: 'Marketcap (SOL)' },
   { key: 'price_1h',       sortKey: 'price_change_1h',  label: '1h %' },
   { key: 'price_24h',      sortKey: 'price_change_24h', label: '24h %' },
   { key: 'tvl',            sortKey: 'tvl',              label: 'Liquidity' },
@@ -108,7 +108,7 @@ function PoolCard({ pool, index }: { pool: PoolData; index: number }) {
             <p className="text-[10px] text-muted-foreground font-mono-numbers">{shortenAddress(pool.pool_address)}</p>
           </div>
         </div>
-        <span className="font-mono-numbers text-foreground text-sm">{formatCurrency(pool.price)}</span>
+        <span className="font-mono-numbers text-foreground text-sm">{formatMarketCapSol(pool.mc_sol)}</span>
       </div>
 
       {/* Metrics grid */}
@@ -251,9 +251,9 @@ export default function PoolTable({ pools, isLoading }: PoolTableProps) {
                   </div>
                 </td>
 
-                {/* Price */}
+                {/* Marketcap */}
                 <td className="px-4 py-3 font-mono-numbers text-foreground whitespace-nowrap">
-                  {pool.price > 0 ? `$${pool.price < 0.01 ? pool.price.toExponential(2) : pool.price.toFixed(pool.price < 1 ? 6 : 2)}` : '—'}
+                  {formatMarketCapSol(pool.mc_sol)}
                 </td>
 
                 {/* 1h % */}
