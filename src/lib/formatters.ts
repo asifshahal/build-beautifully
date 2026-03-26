@@ -6,12 +6,12 @@ export function formatCurrency(value: number | null | undefined): string {
   return `$${value.toFixed(2)}`;
 }
 
-export function formatMarketCapSol(value: number | null | undefined): string {
-  if (value === null || value === undefined || value === 0) return 'N/A';
-  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B SOL`;
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M SOL`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K SOL`;
-  return `${Math.floor(value)} SOL`;
+export function formatMarketCapUsd(value: number | null | undefined): string {
+  if (value === null || value === undefined || value === 0 || isNaN(value)) return 'N/A';
+  if (value >= 1_000_000_000) return `$${(value / 1_000_000_000).toFixed(1)}B`;
+  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
+  return `$${Math.floor(value)}`;
 }
 
 export function formatFeeTvl(value: number | null | undefined): string {

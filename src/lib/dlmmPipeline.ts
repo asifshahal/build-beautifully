@@ -25,6 +25,9 @@ const SOL_PRICE_FALLBACK = 150;
 const DEX_BATCH_SIZE = 30;
 const HELIUS_BATCH_SIZE = 100;
 
+const SUPPLY_CACHE = new Map<string, number>();
+const PRICE_CACHE = new Map<string, number>();
+
 // ─── Module-level caches (refreshed each cycle) ─────────────────────────────
 
 let priceMap = new Map<string, number>();
@@ -116,10 +119,9 @@ async function batchFetchDexscreener(mints: string[]): Promise<void> {
 
         // Take first (highest liquidity) pair per mint
         if (!priceMap.has(mint)) {
-          const priceUsd = mint === baseAddr
-            ? Number(pair.priceUsd) || 0
-            : (Number(pair.priceUsd) > 0 ? 1 / Number(pair.priceUsd) : 0);
+          const priceUsd = Number(pair.priceUsd) || 0;
           priceMap.set(mint, priceUsd);
+          PRICE_CACHE.set(mint, priceUsd);
         }
         if (!fdvMap.has(mint)) {
           fdvMap.set(mint, Number(pair.fdv) || Number(pair.marketCap) || 0);
@@ -194,34 +196,50 @@ async function batchFetchHelius(mints: string[]): Promise<void> {
   }
 }
 
-// ─── Jupiter: SOL price ──────────────────────────────────────────────────────
+// ─── RPC: batch fetch supply ─────────────────────────────────────────────────
 
-async function fetchSolPrice(): Promise<number> {
-  try {
-    const res = await fetch(`${JUPITER_PRICE_URL}?ids=${SOL_MINT}`);
-    if (res.ok) {
-      const json = await res.json();
-      const price = Number(json.data?.[SOL_MINT]?.price);
-      if (price && price > 0) return price;
+async function batchFetchSupply(mints: string[]): Promise<void> {
+  const missing = mints.filter(m => !SUPPLY_CACHE.has(m));
+  if (missing.length === 0) return;
+
+  const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://api.mainnet-beta.solana.com';
+  
+  const batches: string[][] = [];
+  for (let i = 0; i < missing.length; i += 100) {
+    batches.push(missing.slice(i, i + 100));
+  }
+
+  for (const batch of batches) {
+    const requests = batch.map((mint, idx) => ({
+      jsonrpc: '2.0',
+      id: idx,
+      method: 'getTokenSupply',
+      params: [mint]
+    }));
+
+    try {
+      const res = await fetch(RPC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requests)
+      });
+      if (res.ok) {
+        const results = await res.json();
+        results.forEach((r: any) => {
+          if (r.result?.value?.uiAmount != null) {
+            SUPPLY_CACHE.set(batch[r.id], Number(r.result.value.uiAmount));
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('RPC getTokenSupply failed:', err);
     }
-  } catch { /* continue */ }
-
-  try {
-    const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
-    if (res.ok) {
-      const json = await res.json();
-      const price = Number(json.solana?.usd);
-      if (price && price > 0) return price;
-    }
-  } catch { /* continue */ }
-
-  console.warn('All SOL price APIs failed, using fallback:', SOL_PRICE_FALLBACK);
-  return SOL_PRICE_FALLBACK;
+  }
 }
 
 // ─── Merge & normalize ──────────────────────────────────────────────────────
 
-function mergeAndNormalize(pools: RawMeteorPool[], solPrice: number): PoolData[] {
+function mergeAndNormalize(pools: RawMeteorPool[]): PoolData[] {
   return pools.map((p) => {
     const tokenX = p.token_x ?? ({} as any);
     const tokenY = p.token_y ?? ({} as any);
@@ -230,12 +248,11 @@ function mergeAndNormalize(pools: RawMeteorPool[], solPrice: number): PoolData[]
     const nonSolMint = mintA === SOL_MINT ? mintB : mintA;
     const tokenMint = getTokenMint(mintA, mintB);
 
-    // Market cap
-    const fdv = fdvMap.get(nonSolMint) ?? 0;
-    const meteoraMcap = Number(tokenX.market_cap || 0) + Number(tokenY.market_cap || 0);
+    // Exact Marketcap
+    const cachePrice = PRICE_CACHE.get(nonSolMint) || 0;
+    const cacheSupply = SUPPLY_CACHE.get(nonSolMint) || 0;
+    const marketCapUsd = (cachePrice > 0 && cacheSupply > 0) ? cachePrice * cacheSupply : null;
     const tvl = Number(p.tvl) || 0;
-    const marketCapUsd = fdv || meteoraMcap || tvl || 0;
-    const mcSol = solPrice > 0 ? marketCapUsd / solPrice : 0;
 
     // Holders
     const nonSolToken = mintA === SOL_MINT ? tokenY : tokenX;
@@ -287,8 +304,7 @@ function mergeAndNormalize(pools: RawMeteorPool[], solPrice: number): PoolData[]
       token_b_logo: logoB,
       tvl,
       fee_tvl_ratio: feeTvlRatio,
-      market_cap: marketCapUsd,
-      mc_sol: mcSol,
+      marketCapUsd,
       volume_delta: volume30m || null,
       fees_delta: fees30m || null,
       volume_30min: volume30m,
@@ -326,11 +342,11 @@ export async function fetchDLMMPoolsFull(): Promise<PoolData[]> {
   volume24hMap = new Map();
   fees24hMap = new Map();
 
-  const [solPrice] = await Promise.all([
-    fetchSolPrice(),
+  await Promise.all([
+    batchFetchSupply(mints),
     batchFetchDexscreener(mints),
     batchFetchHelius(mints),
   ]);
 
-  return mergeAndNormalize(solPools, solPrice);
+  return mergeAndNormalize(solPools);
 }

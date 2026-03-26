@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, ExternalLink } from 'lucide-react';
 import { PoolData, SortField, SortDirection } from '@/lib/types';
-import { formatCurrency, formatPercent, formatAge, shortenAddress, formatMarketCapSol } from '@/lib/formatters';
+import { formatCurrency, formatPercent, formatAge, shortenAddress, formatMarketCapUsd } from '@/lib/formatters';
 import { getLogo, getDefaultLogo, markLogoFailed } from '@/lib/tokenLogos';
 import { useIsMobile } from '@/hooks/use-mobile';
 import LoadingSkeleton from './LoadingSkeleton';
@@ -15,7 +15,7 @@ interface PoolTableProps {
 
 const columns: { key: string; sortKey: SortField | null; label: string }[] = [
   { key: 'pool',           sortKey: null,               label: 'Token' },
-  { key: 'marketcap',      sortKey: 'mc_sol',           label: 'Marketcap (SOL)' },
+  { key: 'marketcap',      sortKey: 'marketCapUsd',           label: 'Marketcap' },
   { key: 'price_1h',       sortKey: 'price_change_1h',  label: '1h %' },
   { key: 'price_24h',      sortKey: 'price_change_24h', label: '24h %' },
   { key: 'tvl',            sortKey: 'tvl',              label: 'Liquidity' },
@@ -108,7 +108,7 @@ function PoolCard({ pool, index }: { pool: PoolData; index: number }) {
             <p className="text-[10px] text-muted-foreground font-mono-numbers">{shortenAddress(pool.pool_address)}</p>
           </div>
         </div>
-        <span className="font-mono-numbers text-foreground text-sm">{formatMarketCapSol(pool.mc_sol)}</span>
+        <span className="font-mono-numbers text-foreground text-sm">{formatMarketCapUsd(pool.marketCapUsd)}</span>
       </div>
 
       {/* Metrics grid */}
@@ -200,7 +200,36 @@ export default function PoolTable({ pools, isLoading }: PoolTableProps) {
   // Mobile: card layout
   if (isMobile) {
     return (
-      <div className="flex flex-col gap-3 animate-fade-in">
+      <div className="flex flex-col gap-3 animate-fade-in w-full">
+        {/* Mobile Sorting Controls */}
+        <div className="flex items-center gap-2 mb-1 px-1">
+          <select
+            value={sortField || ''}
+            onChange={(e) => {
+              setSortField(e.target.value as SortField);
+              setSortDir('desc');
+            }}
+            className="bg-secondary text-foreground text-sm rounded-md px-3 py-2 border border-border focus:outline-none focus:ring-1 focus:ring-primary flex-1 appearance-none"
+            style={{ backgroundImage: `url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23888%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right .7rem top 50%', backgroundSize: '.65rem auto' }}
+          >
+            <option value="marketCapUsd">Marketcap</option>
+            <option value="tvl">Liquidity</option>
+            <option value="volume_24h">Volume 24h</option>
+            <option value="fees_24h">Fees 24h</option>
+            <option value="age_ms">Pool Age</option>
+            <option value="fee_tvl_ratio">Health</option>
+            <option value="price_change_1h">1h %</option>
+            <option value="price_change_24h">24h %</option>
+          </select>
+          <button
+            onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
+            className="bg-secondary text-foreground px-3 py-2 rounded-md border border-border flex items-center justify-center gap-1.5 hover:bg-accent transition-colors min-w-[80px]"
+          >
+            {sortDir === 'desc' ? <ArrowDown size={14} className="text-primary" /> : <ArrowUp size={14} className="text-primary" />}
+            <span className="text-sm font-medium">{sortDir === 'desc' ? 'DESC' : 'ASC'}</span>
+          </button>
+        </div>
+
         {sorted.map((pool, i) => (
           <PoolCard key={pool.pool_address} pool={pool} index={i} />
         ))}
@@ -253,7 +282,7 @@ export default function PoolTable({ pools, isLoading }: PoolTableProps) {
 
                 {/* Marketcap */}
                 <td className="px-4 py-3 font-mono-numbers text-foreground whitespace-nowrap">
-                  {formatMarketCapSol(pool.mc_sol)}
+                  {formatMarketCapUsd(pool.marketCapUsd)}
                 </td>
 
                 {/* 1h % */}

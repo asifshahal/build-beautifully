@@ -11,7 +11,7 @@ export interface PoolData {
   token_mint: string;
   tvl: number;
   fee_tvl_ratio: number | null;
-  market_cap: number;
+  marketCapUsd: number | null;
   volume_24h: number;
   fees_24h: number;
   volume_delta: number | null;
@@ -25,7 +25,6 @@ export interface PoolData {
   created_at: string | null;
   computed_at?: string;
   // Raw numeric fields for sorting — never undefined/NaN
-  mc_sol: number;
   age_ms: number;
   volume_30min: number;
   fees_30min: number;
@@ -44,7 +43,7 @@ export type Timeframe = '5m' | '15m' | '30m' | '1h' | '4h' | '24h';
 export type SortField =
   | 'tvl'
   | 'fee_tvl_ratio'
-  | 'mc_sol'
+  | 'marketCapUsd'
   | 'volume_24h'
   | 'fees_24h'
   | 'volume_delta'
