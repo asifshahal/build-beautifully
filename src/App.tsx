@@ -4,7 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import DLMMHotPools from "./pages/DLMMHotPools";
-import DAMMHotPools from "./pages/DAMMHotPools";
+
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -18,7 +18,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Navigate to="/dlmm-hot-pools" replace />} />
           <Route path="/dlmm-hot-pools" element={<DLMMHotPools />} />
-          <Route path="/damm-hot-pools" element={<DAMMHotPools />} />
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

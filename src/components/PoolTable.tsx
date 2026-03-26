@@ -288,7 +288,7 @@ export default function PoolTable({ pools, isLoading }: PoolTableProps) {
 
                 {/* Health (Fee/TVL) */}
                 <td className="px-4 py-3 font-mono-numbers text-primary font-medium whitespace-nowrap">
-                  {pool.fee_tvl_ratio != null ? `${pool.fee_tvl_ratio.toFixed(4)}%` : '—'}
+                  {pool.fee_tvl_ratio != null ? `${Math.max(0, Math.min(pool.fee_tvl_ratio, 100)).toFixed(4)}%` : '—'}
                 </td>
 
                 {/* Links */}

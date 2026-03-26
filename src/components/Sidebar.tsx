@@ -4,7 +4,6 @@ import { Flame, BarChart3, Send, ExternalLink, ChevronLeft, ChevronRight } from 
 
 const navItems = [
   { label: 'DLMM Hot Pools', icon: Flame, path: '/dlmm-hot-pools', external: false },
-  { label: 'DAMM Hot Pools', icon: Flame, path: '/damm-hot-pools', external: false },
 ];
 
 const externalLinks = [
@@ -26,9 +25,12 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="h-[60px] flex items-center px-3 border-b border-border">
         {!collapsed && (
-          <span className="text-primary font-bold text-lg tracking-tight">
-            CIT <span className="text-foreground font-medium">Meteora</span>
-          </span>
+          <div className="flex items-center gap-2">
+            <img src="/logo.jpeg" alt="CitLab's Logo" className="h-7 w-auto object-contain" />
+            <span className="text-foreground font-bold text-lg tracking-tight">
+              CitLab's
+            </span>
+          </div>
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
