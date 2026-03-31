@@ -87,6 +87,7 @@ export async function fetchDAMMPools(): Promise<PoolData[]> {
       holders: 0,
       created_at: createdTs,
       age_ms: ageMs,
+      volatility: 0,
     } satisfies PoolData;
   });
 }

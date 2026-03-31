@@ -44,6 +44,16 @@ export function formatAge(createdAt: string | null | undefined): string {
   return `${(months / 12).toFixed(0)}y`;
 }
 
+export function formatPrice(value: number | null | undefined): string {
+  if (!value || value === 0) return '$0';
+  if (value >= 1) return `$${value.toFixed(2)}`;
+  // Show enough decimals for small prices
+  const str = value.toFixed(10);
+  const match = str.match(/^0\.(0*)/);
+  const leadingZeros = match ? match[1].length : 0;
+  return `$${value.toFixed(Math.max(2, leadingZeros + 3))}`;
+}
+
 export function shortenAddress(address: string): string {
   if (!address || address.length < 8) return address || '';
   return `${address.slice(0, 4)}...${address.slice(-4)}`;

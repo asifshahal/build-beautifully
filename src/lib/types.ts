@@ -19,6 +19,8 @@ export interface PoolData {
   price: number;
   price_change_1h: number | null;
   price_change_24h: number | null;
+  /** abs(price_change_24h) — always >= 0 */
+  volatility: number;
   score: number | null;
   flags: PoolFlags;
   holders: number;
@@ -48,8 +50,10 @@ export type SortField =
   | 'fees_24h'
   | 'volume_delta'
   | 'fees_delta'
+  | 'price'
   | 'price_change_1h'
   | 'price_change_24h'
+  | 'volatility'
   | 'score'
   | 'holders'
   | 'age_ms';

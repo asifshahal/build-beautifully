@@ -108,6 +108,7 @@ function normalizeBackendPool(p: any, poolType: string): PoolData {
     price: Number(p.price) || 0,
     price_change_1h: p.price_change_1h != null ? Number(p.price_change_1h) : null,
     price_change_24h: p.price_change_24h != null ? Number(p.price_change_24h) : null,
+    volatility: Math.abs(Number(p.price_change_24h) || 0),
     score: p.score != null ? Number(p.score) : null,
     flags: p.flags ?? {},
     holders,

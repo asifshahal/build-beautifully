@@ -341,6 +341,7 @@ function mergeAndNormalize(pools: RawMeteorPool[]): PoolData[] {
       price,
       price_change_1h: priceChange1h,
       price_change_24h: priceChange24h,
+      volatility: Math.abs(priceChange24h ?? 0),
       score: null,
       flags: {},
       holders,
