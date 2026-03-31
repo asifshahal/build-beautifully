@@ -23,6 +23,7 @@ async function loadTokenLogos() {
 }
 
 function getTokenLogo(mint: string): string {
+  if (mint === SOL_MINT) return '/sol.png';
   return tokenLogoCache[mint] || '';
 }
 

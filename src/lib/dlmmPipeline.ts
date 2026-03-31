@@ -300,8 +300,8 @@ function mergeAndNormalize(pools: RawMeteorPool[]): PoolData[] {
     if (ageMs < 0) ageMs = 0;
 
     // Logos
-    const logoA = logoMap.get(mintA) || `https://cdn.jsdelivr.net/gh/nicholasgasior/solana-tokens-list/logos/${mintA}.png`;
-    const logoB = logoMap.get(mintB) || `https://cdn.jsdelivr.net/gh/nicholasgasior/solana-tokens-list/logos/${mintB}.png`;
+    const logoA = mintA === SOL_MINT ? '/sol.png' : (logoMap.get(mintA) || `https://cdn.jsdelivr.net/gh/nicholasgasior/solana-tokens-list/logos/${mintA}.png`);
+    const logoB = mintB === SOL_MINT ? '/sol.png' : (logoMap.get(mintB) || `https://cdn.jsdelivr.net/gh/nicholasgasior/solana-tokens-list/logos/${mintB}.png`);
 
     // Price
     const price = priceMap.get(nonSolMint) || Number(p.current_price) || 0;
