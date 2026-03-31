@@ -32,6 +32,7 @@ const PRICE_CACHE = new Map<string, number>();
 
 let priceMap = new Map<string, number>();
 let fdvMap = new Map<string, number>();
+let cgMarketCapMap = new Map<string, number>();
 let holderMap = new Map<string, number>();
 let logoMap = new Map<string, string>();
 let priceChange1hMap = new Map<string, number>();
@@ -196,43 +197,69 @@ async function batchFetchHelius(mints: string[]): Promise<void> {
   }
 }
 
-// ─── RPC: batch fetch supply ─────────────────────────────────────────────────
+// ─── CoinGecko: batch fetch market cap ───────────────────────────────────────
 
-async function batchFetchSupply(mints: string[]): Promise<void> {
-  const missing = mints.filter(m => !SUPPLY_CACHE.has(m));
-  if (missing.length === 0) return;
+let jupTokenMap: Map<string, string> | null = null;
 
-  const RPC_URL = import.meta.env.VITE_RPC_URL || 'https://api.mainnet-beta.solana.com';
-  
+async function batchFetchCoinGecko(mints: string[]): Promise<void> {
+  if (mints.length === 0) return;
+
+  if (!jupTokenMap) {
+    jupTokenMap = new Map();
+    try {
+      const res = await fetch('https://tokens.jup.ag/tokens?tags=verified');
+      if (res.ok) {
+        const data = await res.json();
+        for (const t of data) {
+          if (t.address && t.extensions?.coingeckoId) {
+            jupTokenMap.set(t.address, t.extensions.coingeckoId);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Jupiter token list fetch failed', err);
+    }
+  }
+
+  const validIds: string[] = [];
+  const idToMints = new Map<string, string[]>();
+
+  for (const mint of mints) {
+    const cgId = jupTokenMap?.get(mint);
+    if (cgId) {
+      if (!idToMints.has(cgId)) {
+        idToMints.set(cgId, []);
+        validIds.push(cgId);
+      }
+      idToMints.get(cgId)!.push(mint);
+    }
+  }
+
+  if (validIds.length === 0) return;
+
   const batches: string[][] = [];
-  for (let i = 0; i < missing.length; i += 100) {
-    batches.push(missing.slice(i, i + 100));
+  for (let i = 0; i < validIds.length; i += 100) {
+    batches.push(validIds.slice(i, i + 100));
   }
 
   for (const batch of batches) {
-    const requests = batch.map((mint, idx) => ({
-      jsonrpc: '2.0',
-      id: idx,
-      method: 'getTokenSupply',
-      params: [mint]
-    }));
-
     try {
-      const res = await fetch(RPC_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requests)
-      });
+      const idsStr = batch.join(',');
+      const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${idsStr}&vs_currencies=usd&include_market_cap=true`);
       if (res.ok) {
-        const results = await res.json();
-        results.forEach((r: any) => {
-          if (r.result?.value?.uiAmount != null) {
-            SUPPLY_CACHE.set(batch[r.id], Number(r.result.value.uiAmount));
+        const data = await res.json();
+        for (const [id, value] of Object.entries(data)) {
+          const mc = (value as any)?.usd_market_cap;
+          if (mc) {
+            const mapped = idToMints.get(id) || [];
+            for (const mint of mapped) {
+              cgMarketCapMap.set(mint, mc);
+            }
           }
-        });
+        }
       }
     } catch (err) {
-      console.warn('RPC getTokenSupply failed:', err);
+      console.warn('CoinGecko fallback failed', err);
     }
   }
 }
@@ -248,10 +275,10 @@ function mergeAndNormalize(pools: RawMeteorPool[]): PoolData[] {
     const nonSolMint = mintA === SOL_MINT ? mintB : mintA;
     const tokenMint = getTokenMint(mintA, mintB);
 
-    // Exact Marketcap
-    const cachePrice = PRICE_CACHE.get(nonSolMint) || 0;
-    const cacheSupply = SUPPLY_CACHE.get(nonSolMint) || 0;
-    const marketCapUsd = (cachePrice > 0 && cacheSupply > 0) ? cachePrice * cacheSupply : null;
+    // Exact Marketcap (CoinGecko -> Dexscreener FDV -> 0)
+    const cgMc = cgMarketCapMap.get(nonSolMint);
+    const dexFdv = fdvMap.get(nonSolMint);
+    const marketCapUsd = cgMc || dexFdv || 0;
     const tvl = Number(p.tvl) || 0;
 
     // Holders
@@ -335,6 +362,7 @@ export async function fetchDLMMPoolsFull(): Promise<PoolData[]> {
   // Clear caches for fresh cycle
   priceMap = new Map();
   fdvMap = new Map();
+  cgMarketCapMap = new Map();
   holderMap = new Map();
   logoMap = new Map();
   priceChange1hMap = new Map();
@@ -343,7 +371,7 @@ export async function fetchDLMMPoolsFull(): Promise<PoolData[]> {
   fees24hMap = new Map();
 
   await Promise.all([
-    batchFetchSupply(mints),
+    batchFetchCoinGecko(mints),
     batchFetchDexscreener(mints),
     batchFetchHelius(mints),
   ]);
